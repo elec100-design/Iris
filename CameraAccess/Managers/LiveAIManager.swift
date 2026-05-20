@@ -406,7 +406,7 @@ class LiveAIManager: ObservableObject {
         let record = ConversationRecord(
             messages: conversationHistory,
             aiModel: aiModel,
-            language: "zh-CN"
+            language: LanguageManager.staticTtsLanguageCode
         )
 
         ConversationStorage.shared.saveConversation(record)

@@ -4,6 +4,7 @@
  */
 
 import SwiftUI
+import AVFoundation
 import MWDATCore
 
 struct SettingsView: View {
@@ -24,10 +25,11 @@ struct SettingsView: View {
     @State private var showLiveAISettings = false
     @State private var showLiveTranslateSettings = false
     @State private var showOpenClawSettings = false
+    @State private var showTTSSettings = false
     @Bindable var quickVisionModeManager = QuickVisionModeManager.shared
     @ObservedObject var liveAIModeManager = LiveAIModeManager.shared
     @State private var selectedModel = "qwen3-omni-flash-realtime"
-    @State private var selectedLanguage = "zh-CN" // 默认中文
+    @State private var selectedLanguage = "ko-KR" // 기본 한국어
     @State private var selectedQuality = UserDefaults.standard.string(forKey: "video_quality") ?? "medium"
     @State private var hasAPIKey = false // 改为 State 变量
     @State private var hasGoogleAPIKey = false // Google API Key 状态
@@ -220,6 +222,25 @@ struct SettingsView: View {
                                 .foregroundColor(AppColors.textTertiary)
                         }
                     }
+
+                    Button {
+                        showTTSSettings = true
+                    } label: {
+                        HStack {
+                            Image(systemName: "speaker.wave.2.fill")
+                                .foregroundColor(.teal)
+                            Text("TTS 음성 설정")
+                                .foregroundColor(AppColors.textPrimary)
+                            Spacer()
+                            let rate = UserDefaults.standard.object(forKey: "tts_rate") as? Float ?? 0.48
+                            Text(String(format: "%.2f", rate))
+                                .font(AppTypography.caption)
+                                .foregroundColor(AppColors.textSecondary)
+                            Image(systemName: "chevron.right")
+                                .font(AppTypography.caption)
+                                .foregroundColor(AppColors.textTertiary)
+                        }
+                    }
                 } header: {
                     Text("settings.ai".localized)
                 }
@@ -395,6 +416,9 @@ struct SettingsView: View {
             }
             .sheet(isPresented: $showOpenClawSettings) {
                 OpenClawSettingsView()
+            }
+            .sheet(isPresented: $showTTSSettings) {
+                TTSSettingsView()
             }
             .onAppear {
                 // 视图出现时刷新 API Key 状态
@@ -1233,3 +1257,83 @@ struct GoogleAPIKeySettingsView: View {
         }
     }
 }
+// MARK: - TTS Settings View
+
+struct TTSSettingsView: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var ttsRate: Float = UserDefaults.standard.object(forKey: "tts_rate") as? Float ?? 0.48
+    @State private var selectedVoiceId: String = UserDefaults.standard.string(forKey: "tts_voice_identifier") ?? ""
+    @State private var availableVoices: [AVSpeechSynthesisVoice] = []
+
+    var body: some View {
+        NavigationView {
+            Form {
+                Section(header: Text("말하기 속도")) {
+                    HStack {
+                        Text("느리게").font(.caption).foregroundColor(.secondary)
+                        Slider(value: $ttsRate, in: 0.3...0.6, step: 0.01)
+                            .onChange(of: ttsRate) { _, value in
+                                UserDefaults.standard.set(value, forKey: "tts_rate")
+                            }
+                        Text("빠르게").font(.caption).foregroundColor(.secondary)
+                    }
+                    Text(String(format: "현재 속도: %.2f", ttsRate))
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+
+                Section(header: Text("한국어 음성")) {
+                    if availableVoices.isEmpty {
+                        Text("기기에서 한국어 음성을 찾을 수 없습니다.\n설정 → 손쉬운 사용 → 말하기에서 한국어 음성을 다운로드하세요.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    } else {
+                        ForEach(availableVoices, id: \.identifier) { voice in
+                            Button {
+                                selectedVoiceId = voice.identifier
+                                UserDefaults.standard.set(voice.identifier, forKey: "tts_voice_identifier")
+                            } label: {
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(voice.name).foregroundColor(.primary)
+                                        Text(voice.quality == .enhanced ? "Enhanced" : "Standard")
+                                            .font(.caption)
+                                            .foregroundColor(voice.quality == .enhanced ? .blue : .secondary)
+                                    }
+                                    Spacer()
+                                    if selectedVoiceId == voice.identifier {
+                                        Image(systemName: "checkmark").foregroundColor(.blue)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Section {
+                    Button {
+                        TTSService.shared.speak("안녕하세요. 터보메타입니다. 현재 음성 설정을 테스트하고 있습니다.")
+                    } label: {
+                        HStack {
+                            Image(systemName: "speaker.wave.2.fill").foregroundColor(.teal)
+                            Text("음성 미리 듣기")
+                        }
+                    }
+                }
+            }
+            .navigationTitle("TTS 음성 설정")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("완료") { dismiss() }
+                }
+            }
+            .onAppear {
+                availableVoices = AVSpeechSynthesisVoice.speechVoices().filter {
+                    $0.language.hasPrefix("ko")
+                }
+            }
+        }
+    }
+}
+

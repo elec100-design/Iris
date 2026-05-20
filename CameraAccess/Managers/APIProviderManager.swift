@@ -61,7 +61,7 @@ enum APIProvider: String, CaseIterable, Codable {
     var defaultModel: String {
         switch self {
         case .alibaba: return "qwen3-vl-plus"
-        case .openrouter: return "google/gemini-3-flash-preview"
+        case .openrouter: return PreferredOpenRouterModel.gemini20Flash.rawValue
         }
     }
 
@@ -108,6 +108,24 @@ enum LiveAIProvider: String, CaseIterable, Codable {
         switch self {
         case .alibaba: return endpoint.websocketURL
         case .google: return "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent"
+        }
+    }
+}
+
+// MARK: - Preferred OpenRouter Models (curated, type-safe)
+
+enum PreferredOpenRouterModel: String, CaseIterable {
+    case gemini20Flash  = "google/gemini-2.0-flash-exp"      // 기본값 — 최저 latency
+    case gemini25Flash  = "google/gemini-2.5-flash-preview"  // 최신 Flash
+    case claudeSonnet   = "anthropic/claude-sonnet-4-5"      // 고품질 텍스트
+    case qwen25VL       = "qwen/qwen2.5-vl-72b-instruct"    // Vision 특화
+
+    var displayName: String {
+        switch self {
+        case .gemini20Flash:  return "Gemini 2.0 Flash (권장)"
+        case .gemini25Flash:  return "Gemini 2.5 Flash"
+        case .claudeSonnet:   return "Claude Sonnet"
+        case .qwen25VL:       return "Qwen 2.5 VL"
         }
     }
 }

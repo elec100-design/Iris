@@ -72,6 +72,8 @@
 	<string>TurboMeta는 스마트 글래스와의 실시간 음성 대화 기능을 구현하기 위해 마이크에 접속해야 합니다.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>TurboMeta의 포토갤러리 사용권한을 부여하세요.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>음성 명령을 텍스트로 변환하기 위해 음성 인식 기능을 사용합니다.</string>
 	<key>NSSiriUsageDescription</key>
 	<string>TurboMeta 需要 Siri 权限以支持语音快捷指令触发快速识图功能。</string>
 	<key>UIApplicationSceneManifest</key>

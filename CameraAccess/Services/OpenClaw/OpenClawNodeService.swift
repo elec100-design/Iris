@@ -208,8 +208,11 @@ class OpenClawNodeService: NSObject, ObservableObject {
             self.connectionState = .connecting
         }
 
-        // 💡 핵심 수정: Tailscale 도메인(.ts.net)이거나 443 포트면 보안 웹소켓(wss) 사용
-        let scheme = (gatewayHost.contains("ts.net") || gatewayPort == 443) ? "wss" : "ws"
+        // wss: Tailscale MagicDNS hostname(.ts.net) + 443일 때만 사용.
+        // 원시 IP 직접 연결 시 인증서 CN 불일치 → TLS 실패하므로 ws로 강제.
+        // Tailscale 자체가 E2E 암호화하므로 내부망에서 ws는 안전.
+        let isRawIP = gatewayHost.range(of: #"^\d{1,3}(\.\d{1,3}){3}$"#, options: .regularExpression) != nil
+        let scheme = (!isRawIP && (gatewayHost.contains("ts.net") || gatewayPort == 443)) ? "wss" : "ws"
             
         var urlString = "\(scheme)://\(gatewayHost):\(gatewayPort)/"
             

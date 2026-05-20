@@ -8,6 +8,27 @@ import Foundation
 import UIKit
 import CoreLocation
 
+import Network
+
+// 앱이 켜지는 순간 로컬 네트워크 권한 팝업을 강제로 띄우는 완전 격리 코드
+import Network
+
+func forceTriggerLocalNetworkPopup() {
+    let host = NWEndpoint.Host("255.255.255.255")
+    // 🌟 에러 해결: 포트를 명확히 지정 (.any 또는 구체적인 포트 번호)
+    let port = NWEndpoint.Port(integerLiteral: 80)
+    
+    let connection = NWConnection(host: host, port: port, using: .udp)
+    
+    // 🌟 에러 해결: state의 타입을 NWConnection.State로 명시
+    connection.stateUpdateHandler = { (state: NWConnection.State) in
+        print("⚡️ 강제 네트워크 노크 상태: \(state)")
+    }
+    
+    // 🌟 에러 해결: DispatchQueue.main을 정확히 지정
+    connection.start(queue: DispatchQueue.main)
+}
+
 @MainActor
 class OpenClawChatViewModel: ObservableObject {
 
@@ -234,6 +255,49 @@ class OpenClawChatViewModel: ObservableObject {
         await processGeminiCommand(text: text)
     }
 
+    /// 설정된 AI 프로바이더로 직접 텍스트 채팅 (OpenClaw 서버 우회)
+    func processTextChat(text: String, history: [OpenClawChatMessage]) async -> String {
+        let apiKey = VisionAPIConfig.apiKey
+        guard !apiKey.isEmpty else {
+            return "❌ API 키가 설정되지 않았습니다. 설정 → 프로바이더에서 API 키를 입력해주세요."
+        }
+        guard let url = URL(string: "\(VisionAPIConfig.baseURL)/chat/completions") else {
+            return "❌ API URL 설정 오류"
+        }
+
+        isProcessing = true
+        statusMessage = "답변 생성 중..."
+        defer {
+            isProcessing = false
+            statusMessage = ""
+        }
+
+        var requestMessages: [[String: Any]] = history.suffix(10).map {
+            ["role": $0.role, "content": $0.text]
+        }
+        requestMessages.append(["role": "user", "content": text])
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.timeoutInterval = 30
+        for (key, value) in VisionAPIConfig.headers(with: apiKey) {
+            request.setValue(value, forHTTPHeaderField: key)
+        }
+        request.httpBody = try? JSONSerialization.data(withJSONObject: [
+            "model": VisionAPIConfig.model,
+            "messages": requestMessages
+        ])
+
+        guard let (data, _) = try? await URLSession.shared.data(for: request),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let choices = json["choices"] as? [[String: Any]],
+              let message = choices.first?["message"] as? [String: Any],
+              let content = message["content"] as? String
+        else { return "❌ 응답을 받지 못했습니다. API 키와 모델 설정을 확인해주세요." }
+
+        return content
+    }
+
     // MARK: - Intent Classification
 
     struct IntentResponse: Decodable {
@@ -292,6 +356,7 @@ class OpenClawChatViewModel: ObservableObject {
 
     private func fail(_ reason: String, t0: CFAbsoluteTime) {
         print("[VisualAI] FAIL: \(reason) (\(elapsed(t0)))")
+        lastAnalysisResult = "❌ \(reason)"
         statusMessage = reason
         isProcessing = false
     }

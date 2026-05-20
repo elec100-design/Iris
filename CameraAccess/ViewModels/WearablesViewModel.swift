@@ -38,7 +38,11 @@ class WearablesViewModel: ObservableObject {
   init(wearables: WearablesInterface) {
     self.wearables = wearables
     self.devices = wearables.devices
+    #if targetEnvironment(simulator)
+    self.hasMockDevice = true
+    #else
     self.hasMockDevice = false
+    #endif
     self.registrationState = wearables.registrationState
 
     registrationTask = Task {

@@ -131,13 +131,29 @@ class TTSService: NSObject, ObservableObject {
         currentTask?.cancel()
         stop()
         
-        // OpenRouter 使用系统 TTS
+        // OpenRouter: Google Cloud TTS 시도 → 실패 시 시스템 TTS
         if APIProviderManager.staticCurrentProvider == .openrouter {
-            print("🔊 [TTS] OpenRouter mode, using system TTS")
-            isSpeaking = true
-            currentTask = Task {
-                await fallbackToSystemTTS(text: text)
-                isSpeaking = false
+            if let googleKey = APIKeyManager.shared.getGoogleAPIKey(), !googleKey.isEmpty {
+                print("🔊 [TTS] OpenRouter mode → Google Cloud TTS")
+                isSpeaking = true
+                currentTask = Task {
+                    do {
+                        try await synthesizeWithGoogleTTS(text: text, apiKey: googleKey)
+                    } catch {
+                        if !Task.isCancelled {
+                            print("❌ [TTS] Google TTS failed: \(error) → system TTS fallback")
+                            await fallbackToSystemTTS(text: text)
+                        }
+                    }
+                    if !Task.isCancelled { isSpeaking = false }
+                }
+            } else {
+                print("🔊 [TTS] No Google API key → system TTS")
+                isSpeaking = true
+                currentTask = Task {
+                    await fallbackToSystemTTS(text: text)
+                    isSpeaking = false
+                }
             }
             return
         }
@@ -175,6 +191,63 @@ class TTSService: NSObject, ObservableObject {
         }
     }
     
+    /// Low-latency TTS: always uses system AVSpeechSynthesizer — no API round-trip.
+    /// Ideal for continuous conversation mode where < 500ms response is required.
+    func speakFast(_ text: String) {
+        currentTask?.cancel()
+        stop()
+        isSpeaking = true
+        currentTask = Task {
+            await speakSystemFast(text: text)
+            if !Task.isCancelled { isSpeaking = false }
+        }
+    }
+
+    /// Pre-warm the system synthesizer to eliminate cold-start latency on first call.
+    func prewarm() {
+        if systemSynthesizer == nil {
+            systemSynthesizer = AVSpeechSynthesizer()
+        }
+    }
+
+    private func speakSystemFast(text: String) async {
+        if systemSynthesizer == nil { systemSynthesizer = AVSpeechSynthesizer() }
+        guard let synthesizer = systemSynthesizer else { return }
+
+        do {
+            let session = AVAudioSession.sharedInstance()
+            try session.setCategory(.playback, mode: .default, options: [.duckOthers])
+            try session.setActive(true)
+        } catch {
+            print("⚠️ [TTS Fast] Audio session: \(error)")
+        }
+
+        let utterance = AVSpeechUtterance(string: text)
+        let voiceLanguage = LanguageManager.staticTtsLanguageCode
+        if let voiceId = UserDefaults.standard.string(forKey: "tts_voice_identifier"),
+           let savedVoice = AVSpeechSynthesisVoice(identifier: voiceId) {
+            utterance.voice = savedVoice
+        } else {
+            utterance.voice = AVSpeechSynthesisVoice(language: voiceLanguage)
+        }
+        utterance.rate = min((UserDefaults.standard.object(forKey: "tts_rate") as? Float ?? 0.48) + 0.04, 0.60)
+        utterance.pitchMultiplier = 1.05
+        utterance.volume = 0.9
+
+        synthesizer.speak(utterance)
+        try? await Task.sleep(nanoseconds: 80_000_000)
+
+        while synthesizer.isSpeaking {
+            if Task.isCancelled {
+                synthesizer.stopSpeaking(at: .immediate)
+                systemSynthesizer = nil
+                return
+            }
+            try? await Task.sleep(nanoseconds: 100_000_000)
+        }
+        systemSynthesizer = nil
+    }
+
     /// 停止播报
     func stop() {
         currentTask?.cancel()
@@ -185,7 +258,63 @@ class TTSService: NSObject, ObservableObject {
     }
     
     // MARK: - Private Methods
-    
+
+    /// Google Cloud TTS — Neural2 한국어 고품질 음성
+    /// 응답: base64 PCM16 @ 24kHz → 기존 Alibaba 오디오 엔진 재사용
+    private func synthesizeWithGoogleTTS(text: String, apiKey: String) async throws {
+        let urlString = "https://texttospeech.googleapis.com/v1/text:synthesize?key=\(apiKey)"
+        guard let url = URL(string: urlString) else { throw TTSError.invalidResponse }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 15
+
+        let body: [String: Any] = [
+            "input": ["text": text],
+            "voice": [
+                "languageCode": "ko-KR",
+                "name": "ko-KR-Neural2-A"
+            ],
+            "audioConfig": [
+                "audioEncoding": "LINEAR16",
+                "sampleRateHertz": 24000
+            ]
+        ]
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw TTSError.invalidResponse
+        }
+        guard httpResponse.statusCode == 200 else {
+            let body = String(data: data, encoding: .utf8) ?? ""
+            print("❌ [TTS] Google TTS \(httpResponse.statusCode): \(body.prefix(300))")
+            throw TTSError.apiError(statusCode: httpResponse.statusCode)
+        }
+
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let audioContent = json["audioContent"] as? String,
+              let audioData = Data(base64Encoded: audioContent),
+              !audioData.isEmpty else {
+            throw TTSError.noAudioData
+        }
+
+        print("🔊 [TTS] Google TTS received \(audioData.count) bytes")
+
+        playerNode?.stop()
+        playerNode?.reset()
+        if !isPlaybackEngineRunning { startPlaybackEngine() }
+        playerNode?.play()
+
+        guard isPlaybackEngineRunning else { throw TTSError.playbackFailed }
+
+        playAudioChunk(audioData)
+        await waitForPlaybackCompletion()
+        print("🔊 [TTS] Google TTS finished")
+    }
+
     private func synthesizeAndPlay(text: String, apiKey: String) async throws {
         guard let url = URL(string: baseURL) else {
             throw TTSError.invalidResponse
@@ -380,14 +509,17 @@ class TTSService: NSObject, ObservableObject {
         
         let utterance = AVSpeechUtterance(string: text)
         
-        // 🛠️ 이 부분이 범인이었습니다!
-        // 기존: LanguageManager.staticIsChinese ? "zh-CN" : "en-US"
-        // 수정: 우리가 만든 staticTtsLanguageCode를 사용하여 한국어(ko-KR)를 지원하게 합니다.
         let voiceLanguage = LanguageManager.staticTtsLanguageCode
-        utterance.voice = AVSpeechSynthesisVoice(language: voiceLanguage)
-        
-        utterance.rate = AVSpeechUtteranceDefaultSpeechRate
-        utterance.volume = 1.0
+        if let voiceId = UserDefaults.standard.string(forKey: "tts_voice_identifier"),
+           let savedVoice = AVSpeechSynthesisVoice(identifier: voiceId) {
+            utterance.voice = savedVoice
+        } else {
+            utterance.voice = AVSpeechSynthesisVoice(language: voiceLanguage)
+        }
+
+        utterance.rate = UserDefaults.standard.object(forKey: "tts_rate") as? Float ?? 0.48
+        utterance.pitchMultiplier = 1.05
+        utterance.volume = 0.9
         
         print("🔊 [TTS] System TTS speaking (\(voiceLanguage)): \(text.prefix(30))...")
         synthesizer.speak(utterance)

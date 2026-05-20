@@ -59,11 +59,14 @@ class LiveAIModeManager: ObservableObject {
         // 加载自定义提示词
         self.customPrompt = userDefaults.string(forKey: customPromptKey) ?? "liveai.custom.default".localized
 
-        // 加载翻译目标语言（默认跟随系统语言）
-        if let savedLanguage = userDefaults.string(forKey: translateTargetLanguageKey) {
+        // 번역 대상 언어 로드 — 기본값 한국어(ko-KR)
+        // savedLanguage.contains("-") 검사: BCP-47 코드(ko-KR 등)만 수락
+        // 구버전에서 "Chinese"/"English" 같은 잘못된 값이 저장된 경우 한국어로 리셋
+        if let savedLanguage = userDefaults.string(forKey: translateTargetLanguageKey),
+           savedLanguage.contains("-") {
             self.translateTargetLanguage = savedLanguage
         } else {
-            self.translateTargetLanguage = LanguageManager.staticApiLanguageCode
+            self.translateTargetLanguage = "ko-KR"
         }
     }
 

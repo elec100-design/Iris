@@ -23,7 +23,11 @@ struct MainAppView: View {
   @StateObject private var streamViewModel: StreamSessionViewModel
   @State private var quickVisionManager = QuickVisionManager.shared
   @State private var permissionsGranted = false
+  #if targetEnvironment(simulator)
+  @State private var hasCheckedPermissions = true
+  #else
   @State private var hasCheckedPermissions = false
+  #endif
 
   init(wearables: WearablesInterface, viewModel: WearablesViewModel) {
     self.wearables = wearables
@@ -42,7 +46,7 @@ struct MainAppView: View {
         }
       } else {
         // 权限已检查，显示主界面
-        MainTabView(streamViewModel: streamViewModel, wearablesViewModel: viewModel)
+        MainChatView(streamViewModel: streamViewModel, wearablesViewModel: viewModel)
           .onAppear {
             // 设置 QuickVisionManager 的 StreamViewModel 引用
             quickVisionManager.setStreamViewModel(streamViewModel)

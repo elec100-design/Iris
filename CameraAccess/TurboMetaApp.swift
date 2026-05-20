@@ -30,6 +30,9 @@ struct TurboMetaApp: App {
   // Debug menu for simulating device connections during development
   @StateObject private var debugMenuViewModel = DebugMenuViewModel(mockDeviceKit: MockDeviceKit.shared)
   #endif
+  #if targetEnvironment(simulator)
+  @StateObject private var mockConnectionManager = MockConnectionManager()
+  #endif
   private let wearables: WearablesInterface
   @StateObject private var wearablesViewModel: WearablesViewModel
 
@@ -51,6 +54,9 @@ struct TurboMetaApp: App {
       // Main app view with access to the shared Wearables SDK instance
       // The Wearables.shared singleton provides the core DAT API
       MainAppView(wearables: Wearables.shared, viewModel: wearablesViewModel)
+        #if targetEnvironment(simulator)
+        .environment(\.connectionManager, mockConnectionManager)
+        #endif
         // Show error alerts for view model failures
         .alert("Error", isPresented: $wearablesViewModel.showError) {
           Button("OK") {

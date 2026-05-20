@@ -272,7 +272,7 @@ class OmniRealtimeViewModel: ObservableObject {
         let record = ConversationRecord(
             messages: conversationHistory,
             aiModel: aiModel,
-            language: "zh-CN" // TODO: 从设置中获取
+            language: LanguageManager.staticTtsLanguageCode
         )
 
         ConversationStorage.shared.saveConversation(record)
