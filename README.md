@@ -25,17 +25,38 @@
 
 ---
 
-## 🎉 重磅更新 v2.0.0
+## 🎉 重磅更新 v2.1.0
+
+<div align="center">
+
+### 🎙️ Apple 原生语音识别 + Google Cloud TTS + 直接 AI 对话
+
+**无需阿里云 API 也能全功能使用！OpenRouter 用户现已完整支持。**
+
+✅ **iOS v2.1.0** | 📱 **Android v1.5.0**
+
+☕ **喜欢这个项目？** [**请我喝杯咖啡**](#-请我喝杯咖啡) 支持开发！
+
+</div>
+
+### 🆕 v2.1 新功能
+
+- 🎙️ **Apple 原生语音识别**：麦克风输入改用 iOS `SFSpeechRecognizer`，无需任何 API 密钥，韩/中/英语实时识别
+- 🔊 **Google Cloud TTS Neural2**：OpenRouter 用户现支持高品质韩语语音合成（`ko-KR-Neural2-A`），告别机器音
+- 💬 **直接 AI 对话**：文字聊天不再经过 OpenClaw 服务器，直接调用 App 设置中的 AI 模型（OpenRouter/Alibaba），模型选择立即生效
+- 🗣️ **连续对话记忆**：SwiftData 驱动的 `ConversationMemory`，Siri 对话历史自动保存、上下文注入
+- 🤖 **统一语音代理**：`UnifiedVoiceAgent` 将 Siri 命令路由至 Quick Vision / 导航 / Chat，结果实时显示在 MainChatView
+- 🐛 **错误透明化**：分析失败、网络错误等现在直接显示为对话气泡，不再静默失败
+
+---
+
+## 🎉 v2.0.0
 
 <div align="center">
 
 ### 🔗 OpenClaw 集成 + Meta Ray-Ban Display 支持
 
 **语音对话、拍照识别、OpenClaw AI 助手 - 你的眼镜，连接一切！**
-
-✅ **iOS v2.0.0** | 📱 **Android v1.5.0**
-
-☕ **喜欢这个项目？** [**请我喝杯咖啡**](#-请我喝杯咖啡) 支持开发！
 
 </div>
 
@@ -682,13 +703,19 @@ Tailscale 会自动建立加密的点对点连接，无需开放公网端口。
 - [x] Android 版本发布
 - [x] Quick Vision 快速识图 + Siri 快捷指令
 - [x] 实时翻译（18 种语言）
-- [x] **OpenClaw 集成** 🆕
-- [x] **Meta Ray-Ban Display 支持** 🆕
-- [x] **DAT SDK v0.5.0 升级** 🆕
-- [x] **阿里云实时语音识别（Fun-ASR）** 🆕
+- [x] OpenClaw 集成
+- [x] Meta Ray-Ban Display 支持
+- [x] DAT SDK v0.5.0 升级
+- [x] 阿里云实时语音识别（Fun-ASR）
+- [x] **Apple 原生语音识别（SFSpeechRecognizer，无需 API 密钥）** 🆕
+- [x] **Google Cloud TTS Neural2 高品质韩语语音** 🆕
+- [x] **文字聊天直接调用配置的 AI 模型（绕过 OpenClaw 服务器）** 🆕
+- [x] **SwiftData 连续对话记忆（ConversationMemory + UnifiedVoiceAgent）** 🆕
+- [x] **Siri 对话气泡实时显示** 🆕
 
 ### 🚧 进行中
 - [ ] OpenClaw Node 模式（AI 主动调用眼镜拍照）
+- [ ] Siri 语音唤醒短语优化（识别率提升）
 - [ ] Android v2.0 更新
 - [ ] 性能优化
 
