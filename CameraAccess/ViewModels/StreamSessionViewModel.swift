@@ -235,6 +235,17 @@ class StreamSessionViewModel: ObservableObject {
     streamSession.capturePhoto(format: .jpeg)
   }
 
+  func captureHighResPhotoAsync() async -> UIImage? {
+    capturedPhoto = nil
+    capturePhoto()
+    var waited = 0
+    while capturedPhoto == nil && waited < 30 {
+      try? await Task.sleep(nanoseconds: 100_000_000)
+      waited += 1
+    }
+    return capturedPhoto ?? currentVideoFrame
+  }
+
   func dismissPhotoPreview() {
     showPhotoPreview = false
     capturedPhoto = nil

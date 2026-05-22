@@ -377,6 +377,23 @@ class GeminiLiveService: NSObject {
         sendJSON(message)
     }
 
+    func sendVisionContextPrompt() {
+        let message: [String: Any] = [
+            "clientContent": [
+                "turns": [
+                    [
+                        "role": "user",
+                        "parts": [
+                            ["text": "방금 내 카메라로 찍은 사진을 보냈어. 아직 사진에 대한 묘사는 절대 하지 말고, 오직 '보내주신 사진에 대해서 어떤 점이 궁금하신가요?'라고만 정확하게 한국어로 대답한 후 내 다음 질문을 기다려."]
+                        ]
+                    ]
+                ],
+                "turnComplete": true
+            ]
+        ]
+        sendJSON(message)
+    }
+
     func sendImageInput(_ image: UIImage) {
         guard let imageData = image.jpegData(compressionQuality: 0.6) else {
             print("❌ [Gemini] 无法压缩图片")

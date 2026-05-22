@@ -6,6 +6,7 @@
 import Foundation
 import SwiftUI
 import AVFoundation
+import AudioToolbox
 
 // MARK: - Live AI Manager
 
@@ -27,6 +28,9 @@ class LiveAIManager: ObservableObject {
     private var currentVideoFrame: UIImage?
     private var isImageSendingEnabled = false
     private var frameUpdateTimer: Timer?
+
+    // 비전 트리거 단어 목록
+    private let visionTriggerWords = ["이게 뭐야", "설명해줘", "번역해줘", "이거 봐봐"]
 
     // 对话历史
     private var conversationHistory: [ConversationMessage] = []
@@ -291,6 +295,9 @@ class LiveAIManager: ObservableObject {
                 self.conversationHistory.append(
                     ConversationMessage(role: .user, content: userText)
                 )
+                if self.visionTriggerWords.contains(where: { userText.contains($0) }) {
+                    await self.handleVisionTrigger()
+                }
             }
         }
 
@@ -398,6 +405,28 @@ class LiveAIManager: ObservableObject {
         currentVideoFrame = nil
 
         print("✅ [LiveAIManager] Session stopped")
+    }
+
+    // MARK: - Vision Trigger
+
+    private func handleVisionTrigger() async {
+        guard let streamViewModel = streamViewModel,
+              let geminiService = geminiService else { return }
+        print("📸 [LiveAIManager] 비전 트리거 감지 — 사진 캡처 시작")
+
+        // ① 셔터음 (오디오 엔진과 독립적인 System Sound)
+        AudioServicesPlaySystemSound(1108)
+
+        // ② 고화질 사진 캡처 및 video 파트 전송
+        guard let image = await streamViewModel.captureHighResPhotoAsync() else {
+            print("❌ [LiveAIManager] 사진 캡처 실패")
+            return
+        }
+        geminiService.sendImageInput(image)
+
+        // ③ 텍스트 프롬프트 전송 (turnComplete 포함)
+        geminiService.sendVisionContextPrompt()
+        print("✅ [LiveAIManager] 이미지 + 컨텍스트 프롬프트 전송 완료")
     }
 
     /// 保存对话到历史记录
