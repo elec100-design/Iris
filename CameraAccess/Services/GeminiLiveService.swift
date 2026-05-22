@@ -54,10 +54,12 @@ class GeminiLiveService: NSObject {
     private var isRecording = false
     private var hasAudioBeenSent = false
     private var isSessionConfigured = false
+    private var isPlayingBack = false  // Gemini 응답 재생 중 → 마이크 흡수 차단
+    var isMutedForTTS = false          // 시스템 TTS 재생 중 → 마이크 전송 차단
 
     init(apiKey: String, model: String? = nil) {
         self.apiKey = apiKey
-        self.model = model ?? "gemini-2.0-flash-exp"
+        self.model = model ?? "gemini-3.1-flash-live-preview"
         super.init()
         setupAudioEngine()
     }
@@ -88,7 +90,21 @@ class GeminiLiveService: NSObject {
     private func configureAudioSession() {
         do {
             let audioSession = AVAudioSession.sharedInstance()
-            try audioSession.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetoothHFP, .allowBluetoothA2DP, .defaultToSpeaker])
+            try audioSession.setCategory(.playAndRecord, mode: .default, options: [.allowBluetoothHFP, .allowBluetoothA2DP, .defaultToSpeaker])
+
+            // 연결된 BT HFP 입력 장치를 우선 경로로 강제 지정
+            if let availableInputs = audioSession.availableInputs,
+               let btInput = availableInputs.first(where: {
+                   $0.portType == .bluetoothHFP ||
+                   $0.portType == .bluetoothA2DP ||
+                   $0.portType == .bluetoothLE
+               }) {
+                try audioSession.setPreferredInput(btInput)
+                print("🎧 [Gemini] BT 입력 강제 지정: \(btInput.portName)")
+            } else {
+                print("ℹ️ [Gemini] BT 입력 없음 — 기본 경로 사용")
+            }
+
             try audioSession.setActive(true, options: [.notifyOthersOnDeactivation])
         } catch {
             print("⚠️ [Gemini] Audio session 配置失败: \(error)")
@@ -122,7 +138,7 @@ class GeminiLiveService: NSObject {
 
     func connect() {
         // Gemini Live WebSocket URL with API key
-        let baseURL = "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent"
+        let baseURL = "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContent"
         let urlString = "\(baseURL)?key=\(apiKey)"
 
         print("🔌 [Gemini] 准备连接 WebSocket")
@@ -272,6 +288,7 @@ class GeminiLiveService: NSObject {
     }
 
     private func processAudioBuffer(_ buffer: AVAudioPCMBuffer, inputFormat: AVAudioFormat) {
+        guard !isPlayingBack, !isMutedForTTS else { return }
         guard let recordConverter, let recordTargetFormat else { return }
 
         let ratio = recordTargetFormat.sampleRate / inputFormat.sampleRate
@@ -340,15 +357,21 @@ class GeminiLiveService: NSObject {
     }
 
     private func sendRealtimeInput(audioData: String) {
-        // Gemini Live realtime input format
         let message: [String: Any] = [
-            "realtime_input": [
-                "media_chunks": [
-                    [
-                        "mime_type": "audio/pcm;rate=16000",
-                        "data": audioData
-                    ]
+            "realtimeInput": [
+                "audio": [
+                    "mimeType": "audio/pcm;rate=16000",
+                    "data": audioData
                 ]
+            ]
+        ]
+        sendJSON(message)
+    }
+
+    func sendTurnComplete() {
+        let message: [String: Any] = [
+            "clientContent": [
+                "turnComplete": true
             ]
         ]
         sendJSON(message)
@@ -364,12 +387,10 @@ class GeminiLiveService: NSObject {
         print("📸 [Gemini] 发送图片: \(imageData.count) bytes")
 
         let message: [String: Any] = [
-            "realtime_input": [
-                "media_chunks": [
-                    [
-                        "mime_type": "image/jpeg",
-                        "data": base64Image
-                    ]
+            "realtimeInput": [
+                "video": [
+                    "mimeType": "image/jpeg",
+                    "data": base64Image
                 ]
             ]
         ]
@@ -503,6 +524,7 @@ class GeminiLiveService: NSObject {
     private func handleAudioChunk(_ audioData: Data) {
         if !isCollectingAudio {
             isCollectingAudio = true
+            isPlayingBack = true
             audioBuffer = Data()
             audioChunkCount = 0
             hasStartedPlaying = false
@@ -533,6 +555,7 @@ class GeminiLiveService: NSObject {
 
     private func finishAudioPlayback() {
         isCollectingAudio = false
+        isPlayingBack = false
 
         if !audioBuffer.isEmpty {
             playAudio(audioBuffer)

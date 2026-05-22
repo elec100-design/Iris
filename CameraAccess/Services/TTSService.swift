@@ -71,7 +71,7 @@ class TTSService: NSObject, ObservableObject {
             
             // 只在需要时配置，避免与现有会话冲突
             // 使用和 OmniRealtimeService 完全一样的设置（不要 defaultToSpeaker）
-            try audioSession.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetoothHFP, .allowBluetoothA2DP])
+            try audioSession.setCategory(.playAndRecord, mode: .default, options: [.allowBluetoothHFP, .allowBluetoothA2DP, .defaultToSpeaker])
             try audioSession.setPreferredSampleRate(24000)
             try audioSession.setActive(true, options: [.notifyOthersOnDeactivation])
             print("✅ [TTS] Audio session 已配置")
@@ -216,7 +216,7 @@ class TTSService: NSObject, ObservableObject {
 
         do {
             let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playback, mode: .default, options: [.duckOthers])
+            try session.setCategory(.playAndRecord, mode: .default, options: [.allowBluetoothHFP, .allowBluetoothA2DP, .defaultToSpeaker])
             try session.setActive(true)
         } catch {
             print("⚠️ [TTS Fast] Audio session: \(error)")
@@ -234,6 +234,8 @@ class TTSService: NSObject, ObservableObject {
         utterance.pitchMultiplier = 1.05
         utterance.volume = 0.9
 
+        LiveAIManager.shared.muteRecording()
+        synthesizer.delegate = self
         synthesizer.speak(utterance)
         try? await Task.sleep(nanoseconds: 80_000_000)
 
@@ -498,17 +500,17 @@ class TTSService: NSObject, ObservableObject {
         
         do {
             let audioSession = AVAudioSession.sharedInstance()
-            try audioSession.setCategory(.playback, mode: .default, options: [.duckOthers])
+            try audioSession.setCategory(.playAndRecord, mode: .default, options: [.allowBluetoothHFP, .allowBluetoothA2DP, .defaultToSpeaker])
             try audioSession.setActive(true)
         } catch {
             print("⚠️ [TTS] Audio session error: \(error)")
         }
-        
+
         systemSynthesizer = AVSpeechSynthesizer()
         guard let synthesizer = systemSynthesizer else { return }
-        
+
         let utterance = AVSpeechUtterance(string: text)
-        
+
         let voiceLanguage = LanguageManager.staticTtsLanguageCode
         if let voiceId = UserDefaults.standard.string(forKey: "tts_voice_identifier"),
            let savedVoice = AVSpeechSynthesisVoice(identifier: voiceId) {
@@ -520,8 +522,10 @@ class TTSService: NSObject, ObservableObject {
         utterance.rate = UserDefaults.standard.object(forKey: "tts_rate") as? Float ?? 0.48
         utterance.pitchMultiplier = 1.05
         utterance.volume = 0.9
-        
+
         print("🔊 [TTS] System TTS speaking (\(voiceLanguage)): \(text.prefix(30))...")
+        LiveAIManager.shared.muteRecording()
+        synthesizer.delegate = self
         synthesizer.speak(utterance)
         
         try? await Task.sleep(nanoseconds: 100_000_000)
@@ -536,6 +540,18 @@ class TTSService: NSObject, ObservableObject {
         }
         
         systemSynthesizer = nil
+    }
+}
+
+// MARK: - AVSpeechSynthesizerDelegate
+
+extension TTSService: AVSpeechSynthesizerDelegate {
+    // TTS가 완전히 끝난 직후에만 마이크 전송을 재개 (에코 방지)
+    nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
+        Task { @MainActor in
+            LiveAIManager.shared.unmuteRecording()
+            print("🔊 [TTS] AVSpeechSynthesizer 완료 — 마이크 재개")
+        }
     }
 }
 

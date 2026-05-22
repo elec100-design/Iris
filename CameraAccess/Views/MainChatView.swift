@@ -19,8 +19,7 @@ struct MainChatView: View {
     @State private var showNavInput = false
     @State private var navDestination = ""
     @State private var showHistorySheet = false
-    @State private var isListening = false
-    @State private var asrService: AppleASRService?
+    @ObservedObject private var liveAI = LiveAIManager.shared
     @State private var siriMessages: [ChatMessage] = []
 
     private var apiKey: String { APIKeyManager.shared.getAPIKey() ?? "" }
@@ -71,7 +70,7 @@ struct MainChatView: View {
         .onAppear { setupHandlers() }
         .onDisappear { cleanup() }
         .onReceive(NotificationCenter.default.publisher(for: .voiceAgentRequestsListening)) { _ in
-            if !isListening { startListening() }
+            if !liveAI.isRunning { Task { await liveAI.startLiveAISession() } }
         }
         .onReceive(NotificationCenter.default.publisher(for: .voiceAgentDidUpdateMessages)) { _ in
             siriMessages = ConversationMemory.shared.currentMessages
@@ -140,7 +139,7 @@ struct MainChatView: View {
                 .padding(.vertical, 4)
             }
 
-            if isListening {
+            if liveAI.isRunning {
                 listeningIndicator
             }
 
@@ -166,10 +165,15 @@ struct MainChatView: View {
 
                 Spacer()
 
-                Button { toggleListening() } label: {
-                    Image(systemName: isListening ? "stop.circle.fill" : "mic.circle.fill")
+                Button {
+                    Task {
+                        if liveAI.isRunning { await liveAI.stopSession() }
+                        else { await liveAI.startLiveAISession() }
+                    }
+                } label: {
+                    Image(systemName: liveAI.isRunning ? "stop.circle.fill" : "mic.circle.fill")
                         .font(.system(size: 52))
-                        .foregroundColor(isListening ? .red : .blue)
+                        .foregroundColor(liveAI.isRunning ? .red : .blue)
                         .shadow(radius: 5)
                 }
 
@@ -207,7 +211,7 @@ struct MainChatView: View {
 
             // Text input
             HStack(spacing: 10) {
-                TextField(isListening ? "🎤 듣는 중..." : "터보메타에게 말하기...", text: $inputText)
+                TextField(liveAI.isRunning ? "🎤 AI와 대화 중..." : "터보메타에게 말하기...", text: $inputText)
                     .textFieldStyle(.roundedBorder)
                     .submitLabel(.send)
                     .onSubmit { sendText() }
@@ -269,6 +273,8 @@ struct MainChatView: View {
     // MARK: - Setup
 
     private func setupHandlers() {
+        LiveAIManager.shared.setStreamViewModel(streamViewModel)
+
         openClawService.onChatEvent = { (text: String) in
             if text.hasPrefix("[[FINAL]]") {
                 let fullText = String(text.dropFirst(9))
@@ -290,7 +296,7 @@ struct MainChatView: View {
     }
 
     private func cleanup() {
-        stopListening()
+        liveAI.triggerStop()
         if !pendingResponse.isEmpty {
             messages.append(OpenClawChatMessage(role: "assistant", text: pendingResponse, image: nil))
             pendingResponse = ""
@@ -342,44 +348,6 @@ struct MainChatView: View {
             let response = await visualAI.processTextChat(text: text, history: historySnapshot)
             messages.append(OpenClawChatMessage(role: "assistant", text: response, image: nil))
         }
-    }
-
-    // MARK: - Voice (ASR)
-
-    private func toggleListening() {
-        if isListening { stopListening() } else { startListening() }
-    }
-
-    private func startListening() {
-        inputText = ""
-
-        let service = AppleASRService()
-        self.asrService = service
-
-        service.onPartialResult = { (text: String) in
-            DispatchQueue.main.async { self.inputText = text }
-        }
-        service.onFinalResult = { (text: String) in
-            DispatchQueue.main.async {
-                self.inputText = text
-                self.isListening = false
-            }
-        }
-        service.onError = { (error: String) in
-            DispatchQueue.main.async {
-                self.isListening = false
-                self.messages.append(OpenClawChatMessage(role: "assistant", text: "🎤 음성 인식 오류: \(error)", image: nil))
-            }
-        }
-
-        service.start()
-        isListening = true
-    }
-
-    private func stopListening() {
-        asrService?.stop()
-        asrService = nil
-        isListening = false
     }
 
     private func flushPendingResponse() {

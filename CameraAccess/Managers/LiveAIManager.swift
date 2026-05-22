@@ -166,7 +166,19 @@ class LiveAIManager: ObservableObject {
         }
 
         // 配置音频会话
-        try audioSession.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetoothHFP, .allowBluetoothA2DP, .mixWithOthers])
+        try audioSession.setCategory(.playAndRecord, mode: .default, options: [.allowBluetoothHFP, .allowBluetoothA2DP, .defaultToSpeaker])
+
+        // 연결된 BT HFP 입력 장치를 우선 경로로 강제 지정
+        if let availableInputs = audioSession.availableInputs,
+           let btInput = availableInputs.first(where: {
+               $0.portType == .bluetoothHFP ||
+               $0.portType == .bluetoothA2DP ||
+               $0.portType == .bluetoothLE
+           }) {
+            try? audioSession.setPreferredInput(btInput)
+            print("🎧 [LiveAIManager] BT 입력 강제 지정: \(btInput.portName)")
+        }
+
         try audioSession.setActive(true)
         print("✅ [LiveAIManager] 后台音频会话已配置: category=\(audioSession.category.rawValue), mode=\(audioSession.mode.rawValue)")
     }
@@ -400,7 +412,7 @@ class LiveAIManager: ObservableObject {
         case .alibaba:
             aiModel = "qwen3-omni-flash-realtime"
         case .google:
-            aiModel = "gemini-2.0-flash-exp"
+            aiModel = "gemini-3.1-flash-live-preview"
         }
 
         let record = ConversationRecord(
@@ -429,6 +441,16 @@ class LiveAIManager: ObservableObject {
         Task { @MainActor in
             await stopSession()
         }
+    }
+
+    /// TTS 재생 시작 시 마이크 전송을 차단합니다 (에코 방지)
+    func muteRecording() {
+        geminiService?.isMutedForTTS = true
+    }
+
+    /// TTS 재생 완료 후 마이크 전송을 재개합니다
+    func unmuteRecording() {
+        geminiService?.isMutedForTTS = false
     }
 }
 
