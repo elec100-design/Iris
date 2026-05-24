@@ -1,26 +1,52 @@
 /*
- * MainChatView — Chat-Centric Root View (UI-02)
- * Image 3 형태: 챗 영역 + 하단 액션 바 + Toolbar 설정 아이콘
- * Tab Bar 제거 — Settings는 우상단 gear 아이콘으로 이동
+ * MainChatView — Iris Dual-Mode Root View
+ * 아이리스 라이브 (Live AI) vs 에이전트 (Apple ASR/Flash) 통합 및 TTS 오디오 통제 마스터본
  */
 
 import SwiftUI
+import AVFoundation
+import Speech
+import MediaPlayer
 
 struct MainChatView: View {
+    // 듀얼 모드 상태 정의
+    enum AppMode {
+        case idle, live, agent
+    }
+
     @ObservedObject var streamViewModel: StreamSessionViewModel
     @ObservedObject var wearablesViewModel: WearablesViewModel
     @ObservedObject private var openClawService = OpenClawNodeService.shared
     @StateObject private var visualAI: OpenClawChatViewModel
 
+    // 통합 대화 배열
     @State private var messages: [OpenClawChatMessage] = []
+    
+    // UI 및 네비게이션 상태
     @State private var inputText = ""
     @State private var pendingResponse = ""
     @State private var showSettings = false
-    @State private var showNavInput = false
-    @State private var navDestination = ""
     @State private var showHistorySheet = false
+    
+    // 듀얼 모드 관리자
     @ObservedObject private var liveAI = LiveAIManager.shared
-    @State private var siriMessages: [ChatMessage] = []
+    @State private var currentMode: AppMode = .idle
+    @State private var isPulsing = false
+
+    // 에이전트 모드 (Apple 내장 음성 인식)
+    @State private var isListeningAgent = false
+    @State private var asrText = ""
+    @State private var asrPartial = ""
+    @State private var speechRecognizer = SFSpeechRecognizer(locale: Locale(identifier: "ko-KR"))
+    @State private var recognitionRequest: SFSpeechAudioBufferRecognitionRequest?
+    @State private var recognitionTask: SFSpeechRecognitionTask?
+    @State private var audioEngine = AVAudioEngine()
+    
+    // 에이전트 침묵 감지 자동 전송 타이머
+    @State private var silenceTimer: Timer?
+    
+    // 에이전트 음성 출력용 TTS
+    private let synthesizer = AVSpeechSynthesizer()
 
     private var apiKey: String { APIKeyManager.shared.getAPIKey() ?? "" }
 
@@ -32,28 +58,33 @@ struct MainChatView: View {
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 0) {
-                connectionBanner
-                messagesList
-                Divider()
-                bottomControls
+            ZStack {
+                // 상태별 반응형 테마 배경 (Red / Blue Glow)
+                modeBackground
+
+                VStack(spacing: 0) {
+                    connectionBanner
+                    messagesList // 말풍선 대화창 리스트
+                    Divider()
+                    bottomControls // 하단 제어 바
+                }
             }
-            .navigationTitle("터보메타")
+            .navigationTitle("아이리스")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                // 새 채팅창 버튼
                 ToolbarItem(placement: .topBarLeading) {
                     Button { startNewConversation() } label: {
-                        Image(systemName: "square.and.pencil")
-                            .font(.system(size: 14))
+                        Image(systemName: "square.and.pencil").font(.system(size: 14))
                     }
                 }
+                // 연결 상태 및 설정 버튼
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     Circle()
                         .fill(openClawService.connectionState == .connected ? Color.green : Color.gray)
                         .frame(width: 8, height: 8)
                     Button { showSettings = true } label: {
-                        Image(systemName: "gear")
-                            .font(.system(size: 14))
+                        Image(systemName: "gear").font(.system(size: 14))
                     }
                 }
             }
@@ -61,23 +92,72 @@ struct MainChatView: View {
         .sheet(isPresented: $showSettings) {
             SettingsView(streamViewModel: streamViewModel, apiKey: apiKey)
         }
+        // 대화 기록 시트
         .sheet(isPresented: $showHistorySheet) {
             ChatHistoryView { loadedMessages in
                 saveCurrentSession()
                 messages = loadedMessages
             }
         }
-        .onAppear { setupHandlers() }
-        .onDisappear { cleanup() }
-        .onReceive(NotificationCenter.default.publisher(for: .voiceAgentRequestsListening)) { _ in
-            if !liveAI.isRunning { Task { await liveAI.startLiveAISession() } }
+        .onAppear {
+            setupHandlers()
+            setupRemoteCommandCenter() // 안경 터치패드 리모컨 활성화
+            withAnimation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true)) {
+                isPulsing = true
+            }
         }
+        .onDisappear {
+            cleanup()
+        }
+        
+        // 아이리스 라이브 상태 연동
+        .onChange(of: liveAI.isRunning) {
+            if liveAI.isRunning { currentMode = .live }
+            else if currentMode == .live { currentMode = .idle }
+        }
+        
+        // 시리(Siri) 단축어 구동 신호 감지
+        .onReceive(NotificationCenter.default.publisher(for: .voiceAgentRequestsListening)) { _ in
+            if !liveAI.isRunning {
+                currentMode = .live
+                Task { await liveAI.startLiveAISession() }
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("agentRequestsListening"))) { _ in
+            if currentMode != .agent { toggleAgentMode() }
+        }
+        
+        // 아이리스 라이브 대화 로깅 동기화
         .onReceive(NotificationCenter.default.publisher(for: .voiceAgentDidUpdateMessages)) { _ in
-            siriMessages = ConversationMemory.shared.currentMessages
+            let liveMessages = ConversationMemory.shared.currentMessages
+            for siriMsg in liveMessages {
+                let roleStr = String(describing: siriMsg.role).lowercased().contains("user") ? "user" : "assistant"
+                let msgText = siriMsg.content
+                
+                if !messages.contains(where: { $0.text == msgText && $0.role == roleStr }) {
+                    DispatchQueue.main.async {
+                        messages.append(OpenClawChatMessage(role: roleStr, text: msgText, image: nil))
+                    }
+                }
+            }
         }
     }
 
-    // MARK: - Connection Banner
+    // MARK: - UI Components
+
+    @ViewBuilder
+    private var modeBackground: some View {
+        Group {
+            switch currentMode {
+            case .live:
+                RadialGradient(gradient: Gradient(colors: [Color.red.opacity(0.15), Color(.systemBackground)]), center: .bottom, startRadius: 10, endRadius: 600).ignoresSafeArea()
+            case .agent:
+                RadialGradient(gradient: Gradient(colors: [Color.blue.opacity(0.15), Color(.systemBackground)]), center: .bottom, startRadius: 10, endRadius: 600).ignoresSafeArea()
+            case .idle:
+                Color(.systemBackground).ignoresSafeArea()
+            }
+        }
+    }
 
     @ViewBuilder
     private var connectionBanner: some View {
@@ -92,126 +172,96 @@ struct MainChatView: View {
         }
     }
 
-    // MARK: - Messages List
-
     private var messagesList: some View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 12) {
                     ForEach(messages) { msg in
-                        ChatBubble(message: msg).id(msg.id)
+                        // [기능 추가] 말풍선을 누를 때마다 읽기 / 중단이 토글되도록 처리
+                        ChatBubble(message: msg)
+                            .id(msg.id)
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                toggleSpeech(for: msg.text)
+                            }
                     }
                     if !pendingResponse.isEmpty {
                         ChatBubble(message: OpenClawChatMessage(role: "assistant", text: pendingResponse, image: nil))
-                    }
-                    if !siriMessages.isEmpty {
-                        Divider()
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 4)
-                        ForEach(siriMessages) { msg in
-                            ChatMessageView(message: msg)
-                        }
                     }
                     Color.clear.frame(height: 1).id("chat_bottom")
                 }
                 .padding()
             }
-            .onChange(of: messages.count) {
-                withAnimation { proxy.scrollTo("chat_bottom") }
-            }
-            .onChange(of: siriMessages.count) {
-                withAnimation { proxy.scrollTo("chat_bottom") }
-            }
+            .onChange(of: messages.count) { withAnimation { proxy.scrollTo("chat_bottom") } }
         }
     }
 
-    // MARK: - Bottom Controls
-
     private var bottomControls: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: 12) {
             if visualAI.isProcessing {
                 HStack(spacing: 8) {
                     ProgressView().scaleEffect(0.8)
                     Text(visualAI.statusMessage).font(.system(size: 13)).foregroundColor(.secondary)
                 }
                 .frame(maxWidth: .infinity)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 4)
+                .padding(.horizontal, 16).padding(.vertical, 4)
             }
 
-            if liveAI.isRunning {
-                listeningIndicator
+            if currentMode == .live || liveAI.isRunning {
+                listeningIndicator(text: "아이리스 라이브 스트리밍 중...", color: .red)
             }
 
-            if showNavInput {
-                navInputArea
-                    .transition(.move(edge: .top).combined(with: .opacity))
+            if isListeningAgent || !asrText.isEmpty {
+                agentASRPreviewArea
             }
 
-            // Action bar: 촬영 분석 | 마이크 | 길찾기 | 대화 기록
-            HStack {
+            // 듀얼 모드 통합 액션 바
+            HStack(spacing: 20) {
                 Spacer()
-
-                Button {
-                    Task { await triggerSceneDescription() }
-                } label: {
+                // 버튼 1: 아이리스 라이브 (Red)
+                Button { Task { await toggleLiveMode() } } label: {
                     VStack(spacing: 6) {
-                        Image(systemName: "camera.fill").font(.system(size: 28))
-                        Text("촬영 분석").font(.caption2)
+                        Image(systemName: currentMode == .live ? "waveform.circle.fill" : "mic.circle.fill").font(.system(size: 45))
+                        Text("Live").font(.caption).fontWeight(.bold)
                     }
-                    .foregroundColor(visualAI.isProcessing ? .gray : .white)
-                }
-                .disabled(visualAI.isProcessing)
-
-                Spacer()
-
-                Button {
-                    Task {
-                        if liveAI.isRunning { await liveAI.stopSession() }
-                        else { await liveAI.startLiveAISession() }
-                    }
-                } label: {
-                    Image(systemName: liveAI.isRunning ? "stop.circle.fill" : "mic.circle.fill")
-                        .font(.system(size: 52))
-                        .foregroundColor(liveAI.isRunning ? .red : .blue)
-                        .shadow(radius: 5)
+                    .foregroundColor(currentMode == .live ? .red : .white)
+                    .scaleEffect(currentMode == .live && isPulsing ? 1.05 : 1.0)
+                    .shadow(color: currentMode == .live ? .red.opacity(0.5) : .clear, radius: 10)
                 }
 
                 Spacer()
-
-                Button {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        showNavInput.toggle()
-                        if !showNavInput { navDestination = "" }
-                    }
-                } label: {
+                // 버튼 2: 에이전트 호출 및 읽기 중단 제어 (Blue)
+                Button { toggleAgentMode() } label: {
                     VStack(spacing: 6) {
-                        Image(systemName: "location.north.circle.fill").font(.system(size: 28))
-                        Text("길찾기").font(.caption2)
+                        // AI가 떠들고 있을 때는 정지 모양 아이콘(stop.fill)으로 변형해 시각적 피드백 제공
+                        Image(systemName: synthesizer.isSpeaking ? "stop.fill" : (currentMode == .agent ? "sparkles" : "sparkles")).font(.system(size: 45))
+                        Text(synthesizer.isSpeaking ? "정지" : "에이전트").font(.caption).fontWeight(.bold)
                     }
-                    .foregroundColor(showNavInput ? .yellow : .white)
+                    .foregroundColor(synthesizer.isSpeaking ? .orange : (currentMode == .agent ? .blue : .white))
+                    .scaleEffect(currentMode == .agent && isPulsing ? 1.05 : 1.0)
+                    .shadow(color: currentMode == .agent ? .blue.opacity(0.5) : .clear, radius: 10)
                 }
 
                 Spacer()
-
+                // 버튼 3: 대화 기록 열기
                 Button { showHistorySheet = true } label: {
                     VStack(spacing: 6) {
-                        Image(systemName: "clock.arrow.circlepath").font(.system(size: 28))
+                        Image(systemName: "clock.arrow.circlepath").font(.system(size: 30))
                         Text("대화 기록").font(.caption2)
                     }
                     .foregroundColor(.white)
                 }
-
                 Spacer()
             }
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 12)
+            .padding(.vertical, 16)
             .background(Color.black.opacity(0.85))
-            .cornerRadius(16)
+            .cornerRadius(24)
+            .padding(.horizontal, 16)
 
-            // Text input
+            // 텍스트 입력 영역
             HStack(spacing: 10) {
-                TextField(liveAI.isRunning ? "🎤 AI와 대화 중..." : "터보메타에게 말하기...", text: $inputText)
+                TextField(currentMode == .live ? "🎤 아이리스와 대화 중..." : "아이리스에게 말하기...", text: $inputText)
                     .textFieldStyle(.roundedBorder)
                     .submitLabel(.send)
                     .onSubmit { sendText() }
@@ -219,58 +269,272 @@ struct MainChatView: View {
                 Button { sendText() } label: {
                     Image(systemName: "arrow.up.circle.fill")
                         .font(.system(size: 30))
-                        .foregroundColor(inputText.isEmpty || visualAI.isProcessing ? .gray : .purple)
+                        .foregroundColor(inputText.isEmpty || visualAI.isProcessing ? .gray : (currentMode == .agent ? .blue : .red))
                 }
                 .disabled(inputText.isEmpty || visualAI.isProcessing)
             }
             .padding(.horizontal, 16)
+            .padding(.bottom, 8)
         }
         .padding(.vertical, 10)
-        .background(Color(.systemBackground))
+        .background(Color(.systemBackground).opacity(0.9))
     }
 
-    // MARK: - Listening Indicator
-
-    private var listeningIndicator: some View {
+    private func listeningIndicator(text: String, color: Color) -> some View {
         HStack(spacing: 8) {
-            Image(systemName: "waveform").foregroundColor(.red)
-            Text("openclaw.chat.listening".localized)
-                .font(.system(size: 14))
-                .foregroundColor(.secondary)
+            Image(systemName: "waveform").foregroundColor(color)
+            Text(text).font(.system(size: 14)).foregroundColor(.secondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 16)
-        .padding(.vertical, 4)
+        .padding(.horizontal, 16).padding(.vertical, 4)
     }
 
-    // MARK: - Nav Input
-
-    private var navInputArea: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "mappin.circle.fill")
+    private var agentASRPreviewArea: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(displayASRText)
+                .font(.system(size: 15))
                 .foregroundColor(.blue)
-                .font(.system(size: 20))
-
-            TextField("목적지를 입력하세요...", text: $navDestination)
-                .textFieldStyle(.roundedBorder)
-                .submitLabel(.go)
-                .onSubmit { startNavigation() }
-
-            Button { startNavigation() } label: {
-                Text("시작")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 8)
-                    .background(navDestination.isEmpty ? Color.gray : Color.blue)
-                    .cornerRadius(8)
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color(.systemGray6))
+                .cornerRadius(12)
+            
+            if !isListeningAgent && !asrText.isEmpty {
+                HStack(spacing: 12) {
+                    Button {
+                        asrText = ""
+                        asrPartial = ""
+                        currentMode = .idle
+                    } label: {
+                        Text("취소").foregroundColor(.gray).frame(maxWidth: .infinity).padding(.vertical, 12).background(Color(.systemGray5)).cornerRadius(10)
+                    }
+                    Button { sendASRTextToAgent() } label: {
+                        Text("지시하기").bold().foregroundColor(.white).frame(maxWidth: .infinity).padding(.vertical, 12).background(Color.blue).cornerRadius(10)
+                    }
+                }
             }
-            .disabled(navDestination.isEmpty)
         }
         .padding(.horizontal, 16)
     }
 
-    // MARK: - Setup
+    private var displayASRText: String {
+        if asrText.isEmpty && asrPartial.isEmpty { return isListeningAgent ? "에이전트가 듣고 있습니다..." : "" }
+        return asrText + (asrPartial.isEmpty ? "" : asrPartial)
+    }
+
+    // MARK: - 안경 터치패드 리모컨 제어
+
+    private func setupRemoteCommandCenter() {
+        let commandCenter = MPRemoteCommandCenter.shared()
+        
+        commandCenter.playCommand.isEnabled = true
+        commandCenter.playCommand.addTarget { _ in
+            Task { @MainActor in if currentMode != .live { await toggleLiveMode() } }
+            return .success
+        }
+        
+        commandCenter.pauseCommand.isEnabled = true
+        commandCenter.pauseCommand.addTarget { _ in
+            Task { @MainActor in if currentMode == .live { await toggleLiveMode() } }
+            return .success
+        }
+        
+        commandCenter.nextTrackCommand.isEnabled = true
+        commandCenter.nextTrackCommand.addTarget { _ in
+            DispatchQueue.main.async {
+                if isListeningAgent {
+                    autoSendAgentCommand()
+                } else {
+                    toggleAgentMode()
+                }
+            }
+            return .success
+        }
+    }
+
+    // MARK: - Dual Mode Toggles & Logic
+
+    private func toggleLiveMode() async {
+        withAnimation {
+            if currentMode == .live {
+                currentMode = .idle
+                Task { await liveAI.stopSession() }
+            } else {
+                currentMode = .live
+                if isListeningAgent { stopAgentListening() }
+                if synthesizer.isSpeaking { synthesizer.stopSpeaking(at: .immediate) }
+                Task { await liveAI.startLiveAISession() }
+            }
+        }
+    }
+
+    // [기능 개편] 에이전트 버튼 액션 분기
+    private func toggleAgentMode() {
+        // 중요: 에이전트가 현재 긴 대화를 읽고 있는 중이라면, 모드 변경 대신 읽기 강제 정지 처리!
+        if synthesizer.isSpeaking {
+            synthesizer.stopSpeaking(at: .immediate)
+            return
+        }
+        
+        withAnimation {
+            if currentMode == .agent {
+                currentMode = .idle
+                stopAgentListening()
+            } else {
+                currentMode = .agent
+                if liveAI.isRunning { Task { await liveAI.stopSession() } }
+                startAgentListening()
+            }
+        }
+    }
+
+    // MARK: - Apple 네이티브 음성 인식 및 침묵 감지
+
+    private func startAgentListening() {
+        guard let recognizer = speechRecognizer, recognizer.isAvailable else {
+            receiveAgentResponse("음성 인식을 사용할 수 없는 환경입니다.")
+            return
+        }
+        if recognitionTask != nil {
+            recognitionTask?.cancel()
+            recognitionTask = nil
+        }
+        
+        silenceTimer?.invalidate()
+        let audioSession = AVAudioSession.sharedInstance()
+        try? audioSession.setCategory(.playAndRecord, mode: .default, options: [.allowBluetoothHFP, .allowBluetoothA2DP])
+        try? audioSession.setActive(true, options: .notifyOthersOnDeactivation)
+        
+        let inputNode = audioEngine.inputNode
+        inputNode.removeTap(onBus: 0)
+        
+        recognitionRequest = SFSpeechAudioBufferRecognitionRequest()
+        guard let recognitionRequest = recognitionRequest else { return }
+        recognitionRequest.shouldReportPartialResults = true
+        
+        let recordingFormat = inputNode.outputFormat(forBus: 0)
+        inputNode.installTap(onBus: 0, bufferSize: 1024, format: recordingFormat) { buffer, _ in
+            self.recognitionRequest?.append(buffer)
+        }
+        
+        audioEngine.prepare()
+        try? audioEngine.start()
+        
+        asrText = ""
+        isListeningAgent = true
+        
+        recognitionTask = recognizer.recognitionTask(with: recognitionRequest) { result, error in
+            var isFinal = false
+            if let result = result {
+                DispatchQueue.main.async {
+                    self.asrText = result.bestTranscription.formattedString
+                    isFinal = result.isFinal
+                    
+                    // 침묵 감지 자동 전송 (1.5초 타이머)
+                    self.silenceTimer?.invalidate()
+                    self.silenceTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: false) { _ in
+                        self.autoSendAgentCommand()
+                    }
+                }
+            }
+            if error != nil || isFinal {
+                self.stopAgentListening()
+            }
+        }
+    }
+
+    private func stopAgentListening() {
+        silenceTimer?.invalidate()
+        silenceTimer = nil
+        if audioEngine.isRunning {
+            audioEngine.stop()
+            audioEngine.inputNode.removeTap(onBus: 0)
+        }
+        recognitionRequest?.endAudio()
+        recognitionTask?.cancel()
+        recognitionRequest = nil
+        recognitionTask = nil
+        isListeningAgent = false
+        asrPartial = ""
+    }
+
+    private func autoSendAgentCommand() {
+        stopAgentListening()
+        sendASRTextToAgent()
+    }
+
+    private func sendASRTextToAgent() {
+        let text = asrText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        asrText = ""
+        currentMode = .idle
+        processAgentCommand(text)
+    }
+
+    // 에이전트 지능형 라우터 및 "사진 촬영 전송" 처리 파이프라인
+    private func processAgentCommand(_ command: String) {
+        let historySnapshot = Array(messages.suffix(10))
+        messages.append(OpenClawChatMessage(role: "user", text: command, image: nil))
+        flushPendingResponse()
+
+        let lowerCmd = command.lowercased()
+
+        if lowerCmd.contains("사진 촬영 전송") || lowerCmd.contains("사진촬영전송") || lowerCmd.contains("사진 촬영") {
+            if lowerCmd.contains("번역") {
+                Task { await visualAI.captureAndTranslate() }
+            } else {
+                Task { await visualAI.captureAndDescribe() }
+            }
+        } else if lowerCmd.contains("길찾기") || lowerCmd.contains("안내") {
+            let dest = command.replacingOccurrences(of: "길찾기", with: "").replacingOccurrences(of: "안내해줘", with: "").trimmingCharacters(in: .whitespacesAndNewlines)
+            if !dest.isEmpty {
+                Task {
+                    let result = await GoogleMapsNavigator.shared.openWithNaturalLanguage(text: dest)
+                    receiveAgentResponse(result)
+                }
+            } else {
+                receiveAgentResponse("어디로 안내할까요? 목적지를 말씀해 주세요.")
+            }
+        } else if openClawService.connectionState == .connected {
+            // 맥미니 온라인 → WebSocket으로 전송, 응답은 onChatEvent 콜백으로 수신
+            openClawService.sendChatMessage(command)
+        } else {
+            // 맥미니 오프라인 → 외부 AI fallback, 채팅에 알림 표시
+            messages.append(OpenClawChatMessage(role: "notice", text: "⚠️ 맥미니 미연결 — 외부 AI로 응답합니다", image: nil))
+            Task {
+                let response = await visualAI.processTextChat(text: command, history: historySnapshot)
+                receiveAgentResponse(response)
+            }
+        }
+    }
+
+    private func receiveAgentResponse(_ text: String) {
+        messages.append(OpenClawChatMessage(role: "assistant", text: text, image: nil))
+        speakText(text)
+    }
+
+    // [기능 개편] 말풍선 터치 대응 및 TTS 관리 전용 함수
+    private func toggleSpeech(for text: String) {
+        if synthesizer.isSpeaking {
+            // 재생 중일 때 터치하면 즉시 무조건 정지!
+            synthesizer.stopSpeaking(at: .immediate)
+        } else {
+            // 조용할 때 터치하면 해당 텍스트를 처음부터 재생
+            speakText(text)
+        }
+    }
+
+    private func speakText(_ text: String) {
+        if synthesizer.isSpeaking {
+            synthesizer.stopSpeaking(at: .immediate)
+        }
+        let cleanText = text.replacingOccurrences(of: "*", with: "").replacingOccurrences(of: "#", with: "")
+        let utterance = AVSpeechUtterance(string: cleanText)
+        utterance.voice = AVSpeechSynthesisVoice(language: "ko-KR")
+        synthesizer.speak(utterance)
+    }
+
+    // MARK: - 영구 저장 및 핸들러 관리
 
     private func setupHandlers() {
         LiveAIManager.shared.setStreamViewModel(streamViewModel)
@@ -279,34 +543,31 @@ struct MainChatView: View {
             if text.hasPrefix("[[FINAL]]") {
                 let fullText = String(text.dropFirst(9))
                 pendingResponse = ""
-                if !fullText.isEmpty {
-                    messages.append(OpenClawChatMessage(role: "assistant", text: fullText, image: nil))
-                }
+                if !fullText.isEmpty { receiveAgentResponse(fullText) }
             } else {
                 pendingResponse = text
             }
         }
         visualAI.onDescribeResult = { result in
-            messages.append(OpenClawChatMessage(role: "assistant", text: result, image: nil))
+            receiveAgentResponse(result)
         }
-        if openClawService.connectionState != .connected,
-           openClawService.loadGatewayToken() != nil {
+        if openClawService.connectionState != .connected, openClawService.loadGatewayToken() != nil {
             openClawService.connect()
         }
     }
 
     private func cleanup() {
         liveAI.triggerStop()
-        if !pendingResponse.isEmpty {
-            messages.append(OpenClawChatMessage(role: "assistant", text: pendingResponse, image: nil))
-            pendingResponse = ""
-        }
+        stopAgentListening()
+        flushPendingResponse()
         saveCurrentSession()
         openClawService.onChatEvent = nil
         visualAI.onDescribeResult = nil
+        synthesizer.stopSpeaking(at: .immediate)
     }
 
     private func saveCurrentSession() {
+        guard !messages.isEmpty else { return }
         OpenClawSessionStorage.shared.saveSession(messages: messages)
     }
 
@@ -316,38 +577,11 @@ struct MainChatView: View {
         pendingResponse = ""
     }
 
-    // MARK: - Actions
-
-    private func triggerSceneDescription() async {
-        messages.append(OpenClawChatMessage(role: "user", text: "📷 지금 보는 거 설명해줘", image: nil))
-        flushPendingResponse()
-        await visualAI.captureAndDescribe()
-    }
-
-    private func startNavigation() {
-        let dest = navDestination.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !dest.isEmpty else { return }
-        messages.append(OpenClawChatMessage(role: "user", text: "🗺️ \(dest) 로 안내해줘", image: nil))
-        flushPendingResponse()
-        withAnimation { showNavInput = false }
-        navDestination = ""
-        Task {
-            let result = await GoogleMapsNavigator.shared.openWithNaturalLanguage(text: dest)
-            messages.append(OpenClawChatMessage(role: "assistant", text: result, image: nil))
-        }
-    }
-
     private func sendText() {
         let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
-        flushPendingResponse()
         inputText = ""
-        messages.append(OpenClawChatMessage(role: "user", text: text, image: nil))
-        let historySnapshot = Array(messages.dropLast()) // 방금 추가한 메시지 제외
-        Task {
-            let response = await visualAI.processTextChat(text: text, history: historySnapshot)
-            messages.append(OpenClawChatMessage(role: "assistant", text: response, image: nil))
-        }
+        processAgentCommand(text)
     }
 
     private func flushPendingResponse() {

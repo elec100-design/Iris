@@ -72,6 +72,8 @@
 		6FE225749B8E795D8D265971 /* QuickVisionStorage.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7F490219E64EC144DAF8A8C /* QuickVisionStorage.swift */; };
 		759D8C3F84F44478678CA613 /* LiveAIManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC72379319F7F8AAF8019018 /* LiveAIManager.swift */; };
 		7763D1BA2FBE601C0034018B /* AppleASRService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7763D1B92FBE601B0034018B /* AppleASRService.swift */; };
+		7763D1DB2FC0EF020034018B /* StartLiveAIIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7763D1DA2FC0EF020034018B /* StartLiveAIIntent.swift */; };
+		7763D1DD2FC102AF0034018B /* IrisAgentIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7763D1DC2FC102AF0034018B /* IrisAgentIntents.swift */; };
 		77F158E22FB11A0B009AF66D /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = 77F158E12FB11A0B009AF66D /* Localizable.xcstrings */; };
 		77F158EB2FB1B449009AF66D /* UIImage+Extension.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77F158EA2FB1B437009AF66D /* UIImage+Extension.swift */; };
 		77F158ED2FB1BDEB009AF66D /* OpenClawChatViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77F158EC2FB1BDEB009AF66D /* OpenClawChatViewModel.swift */; };
@@ -197,6 +199,8 @@
 		63EB4C91D8E0C8AC944DF95A /* GeminiLiveService.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = GeminiLiveService.swift; sourceTree = "<group>"; };
 		6B037E0156E90DE2314A9F47 /* QuickVisionView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = QuickVisionView.swift; sourceTree = "<group>"; };
 		7763D1B92FBE601B0034018B /* AppleASRService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleASRService.swift; sourceTree = "<group>"; };
+		7763D1DA2FC0EF020034018B /* StartLiveAIIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StartLiveAIIntent.swift; sourceTree = "<group>"; };
+		7763D1DC2FC102AF0034018B /* IrisAgentIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IrisAgentIntents.swift; sourceTree = "<group>"; };
 		77F158E12FB11A0B009AF66D /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
 		77F158EA2FB1B437009AF66D /* UIImage+Extension.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "UIImage+Extension.swift"; sourceTree = "<group>"; };
 		77F158EC2FB1BDEB009AF66D /* OpenClawChatViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenClawChatViewModel.swift; sourceTree = "<group>"; };
@@ -276,6 +280,8 @@
 			children = (
 				568E19B82D2116C7FE3B1829 /* QuickVisionIntent.swift */,
 				5C0ECA1D14EBBE33F66EEF18 /* LiveAIIntent.swift */,
+				7763D1DA2FC0EF020034018B /* StartLiveAIIntent.swift */,
+				7763D1DC2FC102AF0034018B /* IrisAgentIntents.swift */,
 			);
 			path = Intents;
 			sourceTree = "<group>";
@@ -638,10 +644,12 @@
 				4BA57ADE2EF8227E002EC214 /* StreamSessionView.swift in Sources */,
 				4BA57ADF2EF8227E002EC214 /* MockDeviceViewModel.swift in Sources */,
 				4B69CCC52F050D5200D1D025 /* RTMPStreamingViewModel.swift in Sources */,
+				7763D1DD2FC102AF0034018B /* IrisAgentIntents.swift in Sources */,
 				4BA57AE02EF8227E002EC214 /* ConversationStorage.swift in Sources */,
 				4BA57AE12EF8227E002EC214 /* SimpleLiveStreamView.swift in Sources */,
 				4BA57AE22EF8227E002EC214 /* DebugMenuViewModel.swift in Sources */,
 				4BA57AE32EF8227E002EC214 /* FoodNutritionModel.swift in Sources */,
+				7763D1DB2FC0EF020034018B /* StartLiveAIIntent.swift in Sources */,
 				4BA57AE42EF8227E002EC214 /* OmniRealtimeView.swift in Sources */,
 				4BA57AE52EF8227E002EC214 /* VisionAPIConfig.swift in Sources */,
 				4BA57AE62EF8227E002EC214 /* TimeUtils.swift in Sources */,

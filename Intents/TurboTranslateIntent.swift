@@ -4,7 +4,7 @@
 //
 //  Created by 전기백 on 5/11/26.
 //
-
+/* ㅏ*/
 import AppIntents
 
 struct TurboTranslateIntent: AppIntent {

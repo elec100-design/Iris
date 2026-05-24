@@ -4,7 +4,7 @@
 //
 //  Created by 전기백 on 5/11/26.
 //
-
+/*
 import AppIntents
 import UIKit
 
@@ -26,3 +26,4 @@ struct TurboMetaCaptureIntent: AppIntent {
         }
     }
 }
+
