@@ -77,7 +77,12 @@ class OpenClawNodeService: NSObject, ObservableObject {
         "camera"
     ]
 
-    // MARK: - Init
+    // MARK: - Agent Error
+
+    enum OpenClawAgentError: Error {
+        case localServerUnreachable
+    }
+
 
     private override init() {
         // Generate stable device ID from device identifier
@@ -88,9 +93,44 @@ class OpenClawNodeService: NSObject, ObservableObject {
 
     // MARK: - Public Methods
 
-    func setCommandRouter(_ router: OpenClawCommandRouter) {
-        self.commandRouter = router
+    /// Send multimodal AgentPayload to OpenClaw in OpenAI Vision JSON format (local-only).
+    /// Throws `.localServerUnreachable` if not connected — no external fallback.
+    func sendAgentPayload(_ payload: AgentPayload) async throws {
+        guard connectionState == .connected else {
+            throw OpenClawAgentError.localServerUnreachable
+        }
+
+        var contentParts: [[String: Any]] = [
+            ["type": "text", "text": payload.text]
+        ]
+
+        if let attachment = payload.attachment {
+            switch attachment {
+            case .metaCamera(let image):
+                guard let jpegData = image.jpegData(compressionQuality: 0.7) else { break }
+                let base64 = jpegData.base64EncodedString()
+                contentParts.append([
+                    "type": "image_url",
+                    "image_url": ["url": "data:image/jpeg;base64,\(base64)"]
+                ])
+            }
+        }
+
+        let params: [String: Any] = [
+            "sessionKey": chatSessionKey,
+            "idempotencyKey": UUID().uuidString,
+            "messages": contentParts
+        ]
+        let frame: [String: Any] = [
+            "type": "req",
+            "id": UUID().uuidString,
+            "method": "chat.send",
+            "params": params
+        ]
+        sendJSON(frame)
+        print("[OpenClaw] Sent AgentPayload: text=\(payload.text.prefix(50)) hasImage=\(payload.attachment != nil)")
     }
+
 
     func connect() {
         guard connectionState != .connected && connectionState != .connecting else { return }

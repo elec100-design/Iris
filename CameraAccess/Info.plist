@@ -76,6 +76,8 @@
 	<string>음성 명령을 텍스트로 변환하기 위해 음성 인식 기능을 사용합니다.</string>
 	<key>NSSiriUsageDescription</key>
 	<string>TurboMeta 需要 Siri 权限以支持语音快捷指令触发快速识图功能。</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Iris가 사진을 분석하고 답변해드리기 위해 사진 라이브러리 접근이 필요합니다.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

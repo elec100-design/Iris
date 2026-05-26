@@ -38,6 +38,33 @@ class OpenClawChatViewModel: ObservableObject {
     @Published var isProcessing = false
     @Published var statusMessage = ""
     @Published var lastAnalysisResult = ""
+    
+    // 사진 선택 상태 관리
+    @Published var selectedPhotoItem: PhotosPickerItem? = nil {
+        didSet {
+            if let selectedPhotoItem {
+                loadAndConvertImage(from: selectedPhotoItem)
+            }
+        }
+    }
+    @Published var attachedImage: UIImage? = nil
+    @Published var attachedFileURL: URL? = nil
+    @Published var isAnalyzing: Bool = false
+    
+    private func loadAndConvertImage(from item: PhotosPickerItem) {
+        isAnalyzing = true
+        Task { @MainActor in
+            defer { isAnalyzing = false }
+            do {
+                if let data = try await item.loadTransferable(type: Data.self),
+                   let image = UIImage(data: data) {
+                    self.attachedImage = image
+                }
+            } catch {
+                print("Image conversion failed: \(error.localizedDescription)")
+            }
+        }
+    }
 
     var onDescribeResult: ((String) -> Void)?
 
@@ -255,48 +282,50 @@ class OpenClawChatViewModel: ObservableObject {
         await processGeminiCommand(text: text)
     }
 
-    /// 설정된 AI 프로바이더로 직접 텍스트 채팅 (OpenClaw 서버 우회)
-    func processTextChat(text: String, history: [OpenClawChatMessage]) async -> String {
+    /// 로컬 이미지 분석 요청
+    func processImageChat(image: UIImage, text: String) async -> String {
+        isAnalyzing = true
+        defer { isAnalyzing = false }
+        
+    func processImageChat(image: UIImage, text: String) async -> String {
+        isAnalyzing = true
+        defer { isAnalyzing = false }
+        
         let apiKey = VisionAPIConfig.apiKey
-        guard !apiKey.isEmpty else {
-            return "❌ API 키가 설정되지 않았습니다. 설정 → 프로바이더에서 API 키를 입력해주세요."
-        }
-        guard let url = URL(string: "\(VisionAPIConfig.baseURL)/chat/completions") else {
-            return "❌ API URL 설정 오류"
-        }
-
-        isProcessing = true
-        statusMessage = "답변 생성 중..."
-        defer {
-            isProcessing = false
-            statusMessage = ""
-        }
-
-        var requestMessages: [[String: Any]] = history.suffix(10).map {
-            ["role": $0.role, "content": $0.text]
-        }
-        requestMessages.append(["role": "user", "content": text])
-
+        guard !apiKey.isEmpty else { return "❌ API 키가 설정되지 않았습니다." }
+        guard let url = URL(string: "\(VisionAPIConfig.baseURL)/chat/completions") else { return "❌ URL 오류" }
+        
+        // 2048px 고해상도 최적화 및 0.85 압축률 적용
+        let resized = Self.resizeForAnalysis(image, maxDimension: 2048)
+        guard let imageData = resized.jpegData(compressionQuality: 0.85)?.base64EncodedString() else { return "❌ 이미지 변환 실패" }
+        
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
-        request.timeoutInterval = 30
-        for (key, value) in VisionAPIConfig.headers(with: apiKey) {
-            request.setValue(value, forHTTPHeaderField: key)
-        }
-        request.httpBody = try? JSONSerialization.data(withJSONObject: [
+        request.timeoutInterval = 60
+        for (key, value) in VisionAPIConfig.headers(with: apiKey) { request.setValue(value, forHTTPHeaderField: key) }
+        
+        let payload: [String: Any] = [
             "model": VisionAPIConfig.model,
-            "messages": requestMessages
-        ])
-
+            "messages": [
+                ["role": "user", "content": [
+                    ["type": "text", "text": text],
+                    ["type": "image_url", "image_url": ["url": "data:image/jpeg;base64,\(imageData)"]]
+                ]]
+            ]
+        ]
+        
+        request.httpBody = try? JSONSerialization.data(withJSONObject: payload)
+        
         guard let (data, _) = try? await URLSession.shared.data(for: request),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let choices = json["choices"] as? [[String: Any]],
               let message = choices.first?["message"] as? [String: Any],
               let content = message["content"] as? String
-        else { return "❌ 응답을 받지 못했습니다. API 키와 모델 설정을 확인해주세요." }
-
+        else { return "❌ 분석 결과 수신 실패" }
+        
         return content
     }
+
 
     // MARK: - Intent Classification
 

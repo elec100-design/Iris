@@ -7,6 +7,8 @@ import SwiftUI
 import AVFoundation
 import Speech
 import MediaPlayer
+import PhotosUI
+import UniformTypeIdentifiers
 
 struct MainChatView: View {
     // 듀얼 모드 상태 정의
@@ -27,6 +29,7 @@ struct MainChatView: View {
     @State private var pendingResponse = ""
     @State private var showSettings = false
     @State private var showHistorySheet = false
+    @State private var showFileImporter = false
     
     // 듀얼 모드 관리자
     @ObservedObject private var liveAI = LiveAIManager.shared
@@ -260,20 +263,82 @@ struct MainChatView: View {
             .padding(.horizontal, 16)
 
             // 텍스트 입력 영역
-            HStack(spacing: 10) {
-                TextField(currentMode == .live ? "🎤 아이리스와 대화 중..." : "아이리스에게 말하기...", text: $inputText)
-                    .textFieldStyle(.roundedBorder)
-                    .submitLabel(.send)
-                    .onSubmit { sendText() }
-
-                Button { sendText() } label: {
-                    Image(systemName: "arrow.up.circle.fill")
-                        .font(.system(size: 30))
-                        .foregroundColor(inputText.isEmpty || visualAI.isProcessing ? .gray : (currentMode == .agent ? .blue : .red))
+            VStack(spacing: 8) {
+                // [기능 추가] 사진 미리보기 썸네일
+                if let image = visualAI.attachedImage {
+                    HStack {
+                        Image(uiImage: image)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: 60, height: 60)
+                            .cornerRadius(8)
+                            .overlay(alignment: .topTrailing) {
+                                Button {
+                                    visualAI.attachedImage = nil
+                                    visualAI.selectedPhotoItem = nil
+                                } label: {
+                                    Image(systemName: "xmark.circle.fill").foregroundColor(.white).background(Color.black.opacity(0.5)).clipShape(Circle())
+                                }
+                                .offset(x: 5, y: -5)
+                            }
+                        Spacer()
+                    }
+                    .padding(.horizontal, 16)
                 }
-                .disabled(inputText.isEmpty || visualAI.isProcessing)
+                
+                // [기능 추가] 문서 파일 미리보기
+                if let fileURL = visualAI.attachedFileURL {
+                    HStack {
+                        Image(systemName: "doc.text.fill").font(.system(size: 30)).foregroundColor(.blue)
+                        Text(fileURL.lastPathComponent).font(.caption).lineLimit(1)
+                        Button {
+                            visualAI.attachedFileURL = nil
+                        } label: {
+                            Image(systemName: "xmark.circle.fill").foregroundColor(.gray)
+                        }
+                    }
+                    .padding(8).background(Color(.systemGray6)).cornerRadius(8).padding(.horizontal, 16)
+                }
+
+                HStack(spacing: 10) {
+                    // [기능 추가] 파일 및 사진 추가 버튼
+                    PhotosPicker(selection: $visualAI.selectedPhotoItem, matching: .images) {
+                        Image(systemName: "photo.badge.plus").font(.system(size: 24)).foregroundColor(.gray)
+                    }
+                    
+                    Button { showFileImporter = true } label: {
+                        Image(systemName: "doc.badge.plus").font(.system(size: 24)).foregroundColor(.gray)
+                    }
+
+                    TextField(currentMode == .live ? "🎤 아이리스와 대화 중..." : "아이리스에게 말하기...", text: $inputText)
+                        .textFieldStyle(.roundedBorder)
+                        .submitLabel(.send)
+                        .onSubmit { sendText() }
+                        .disabled(visualAI.isAnalyzing)
+
+                    if visualAI.isAnalyzing {
+                        ProgressView().padding(.horizontal, 4)
+                    } else {
+                        Button { sendText() } label: {
+                            Image(systemName: "arrow.up.circle.fill")
+                                .font(.system(size: 30))
+                                .foregroundColor(inputText.isEmpty && visualAI.attachedImage == nil && visualAI.attachedFileURL == nil ? .gray : (currentMode == .agent ? .blue : .red))
+                        }
+                        .disabled(inputText.isEmpty && visualAI.attachedImage == nil && visualAI.attachedFileURL == nil)
+                    }
+                }
+                .padding(.horizontal, 16)
             }
-            .padding(.horizontal, 16)
+            .fileImporter(isPresented: $showFileImporter, allowedContentTypes: [.plainText, .pdf]) { result in
+                switch result {
+                case .success(let url):
+                    let gotAccess = url.startAccessingSecurityScopedResource()
+                    visualAI.attachedFileURL = url
+                    // Note: 파일을 전송하거나 사용한 후에는 아래 코드를 반드시 호출해야 함:
+                    // url.stopAccessingSecurityScopedResource()
+                case .failure(let error): print(error)
+                }
+            }
             .padding(.bottom, 8)
         }
         .padding(.vertical, 10)
@@ -472,6 +537,7 @@ struct MainChatView: View {
     }
 
     // 에이전트 지능형 라우터 및 "사진 촬영 전송" 처리 파이프라인
+    // 기존 동작을 유지하는 원본 함수
     private func processAgentCommand(_ command: String) {
         let historySnapshot = Array(messages.suffix(10))
         messages.append(OpenClawChatMessage(role: "user", text: command, image: nil))
@@ -486,6 +552,36 @@ struct MainChatView: View {
                 Task { await visualAI.captureAndDescribe() }
             }
         } else if lowerCmd.contains("길찾기") || lowerCmd.contains("안내") {
+            let dest = command.replacingOccurrences(of: "길찾기", with: "").replacingOccurrences(of: "안내해줘", with: "").trimmingCharacters(in: .whitespacesAndNewlines)
+            if !dest.isEmpty {
+                Task {
+                    let result = await GoogleMapsNavigator.shared.openWithNaturalLanguage(text: dest)
+                    receiveAgentResponse(result)
+                }
+            } else {
+                receiveAgentResponse("어디로 안내할까요? 목적지를 말씀해 주세요.")
+            }
+        } else if openClawService.connectionState == .connected {
+            openClawService.sendChatMessage(command)
+        } else {
+            messages.append(OpenClawChatMessage(role: "notice", text: "⚠️ 맥미니 미연결 — 외부 AI로 응답합니다", image: nil))
+            Task {
+                let response = await visualAI.processTextChat(text: command, history: historySnapshot)
+                receiveAgentResponse(response)
+            }
+        }
+    }
+
+    // 기능 확장용 오버로딩 함수 (기존 코드 영향 없음)
+    private func processAgentCommand(_ command: String, image: UIImage) {
+        messages.append(OpenClawChatMessage(role: "user", text: command, image: image))
+        flushPendingResponse()
+        
+        Task {
+            let response = await visualAI.processImageChat(image: image, text: command)
+            receiveAgentResponse(response)
+        }
+    }
             let dest = command.replacingOccurrences(of: "길찾기", with: "").replacingOccurrences(of: "안내해줘", with: "").trimmingCharacters(in: .whitespacesAndNewlines)
             if !dest.isEmpty {
                 Task {
@@ -579,9 +675,17 @@ struct MainChatView: View {
 
     private func sendText() {
         let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
+        guard !text.isEmpty || visualAI.attachedImage != nil else { return }
+        
         inputText = ""
-        processAgentCommand(text)
+        
+        if let image = visualAI.attachedImage {
+            processAgentCommand(text, image: image)
+            visualAI.attachedImage = nil
+            visualAI.selectedPhotoItem = nil
+        } else {
+            processAgentCommand(text)
+        }
     }
 
     private func flushPendingResponse() {
