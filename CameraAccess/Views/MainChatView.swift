@@ -332,7 +332,7 @@ struct MainChatView: View {
             .fileImporter(isPresented: $showFileImporter, allowedContentTypes: [.plainText, .pdf]) { result in
                 switch result {
                 case .success(let url):
-                    let gotAccess = url.startAccessingSecurityScopedResource()
+                    _ = url.startAccessingSecurityScopedResource()
                     visualAI.attachedFileURL = url
                     // Note: 파일을 전송하거나 사용한 후에는 아래 코드를 반드시 호출해야 함:
                     // url.stopAccessingSecurityScopedResource()
@@ -582,31 +582,11 @@ struct MainChatView: View {
             receiveAgentResponse(response)
         }
     }
-            let dest = command.replacingOccurrences(of: "길찾기", with: "").replacingOccurrences(of: "안내해줘", with: "").trimmingCharacters(in: .whitespacesAndNewlines)
-            if !dest.isEmpty {
-                Task {
-                    let result = await GoogleMapsNavigator.shared.openWithNaturalLanguage(text: dest)
-                    receiveAgentResponse(result)
-                }
-            } else {
-                receiveAgentResponse("어디로 안내할까요? 목적지를 말씀해 주세요.")
-            }
-        } else if openClawService.connectionState == .connected {
-            // 맥미니 온라인 → WebSocket으로 전송, 응답은 onChatEvent 콜백으로 수신
-            openClawService.sendChatMessage(command)
-        } else {
-            // 맥미니 오프라인 → 외부 AI fallback, 채팅에 알림 표시
-            messages.append(OpenClawChatMessage(role: "notice", text: "⚠️ 맥미니 미연결 — 외부 AI로 응답합니다", image: nil))
-            Task {
-                let response = await visualAI.processTextChat(text: command, history: historySnapshot)
-                receiveAgentResponse(response)
-            }
-        }
-    }
 
     private func receiveAgentResponse(_ text: String) {
-        messages.append(OpenClawChatMessage(role: "assistant", text: text, image: nil))
-        speakText(text)
+        let clean = visualAI.sanitizeResponse(text)
+        messages.append(OpenClawChatMessage(role: "assistant", text: clean, image: nil))
+        speakText(clean)
     }
 
     // [기능 개편] 말풍선 터치 대응 및 TTS 관리 전용 함수
@@ -639,7 +619,14 @@ struct MainChatView: View {
             if text.hasPrefix("[[FINAL]]") {
                 let fullText = String(text.dropFirst(9))
                 pendingResponse = ""
-                if !fullText.isEmpty { receiveAgentResponse(fullText) }
+                if !fullText.isEmpty {
+                    messages.append(OpenClawChatMessage(role: "assistant", text: fullText, image: nil))
+                    if let lastIndex = messages.indices.last {
+                        let rawText = messages[lastIndex].text
+                        messages[lastIndex].text = visualAI.sanitizeResponse(rawText)
+                    }
+                    speakText(messages.last?.text ?? "")
+                }
             } else {
                 pendingResponse = text
             }

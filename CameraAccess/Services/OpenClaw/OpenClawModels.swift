@@ -4,6 +4,18 @@
  */
 
 import Foundation
+import UIKit
+
+// MARK: - Agent Payload
+
+enum AgentAttachment {
+    case metaCamera(UIImage)
+}
+
+struct AgentPayload {
+    let text: String
+    let attachment: AgentAttachment?
+}
 
 // MARK: - Gateway Protocol Frames
 

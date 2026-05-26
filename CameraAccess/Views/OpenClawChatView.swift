@@ -8,7 +8,7 @@ enum AppMode {
 struct OpenClawChatMessage: Identifiable {
     let id = UUID()
     let role: String
-    let text: String
+    var text: String
     let image: UIImage?
     let timestamp = Date()
 }

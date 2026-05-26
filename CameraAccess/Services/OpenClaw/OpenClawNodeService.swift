@@ -93,6 +93,10 @@ class OpenClawNodeService: NSObject, ObservableObject {
 
     // MARK: - Public Methods
 
+    func setCommandRouter(_ router: OpenClawCommandRouter) {
+        commandRouter = router
+    }
+
     /// Send multimodal AgentPayload to OpenClaw in OpenAI Vision JSON format (local-only).
     /// Throws `.localServerUnreachable` if not connected — no external fallback.
     func sendAgentPayload(_ payload: AgentPayload) async throws {

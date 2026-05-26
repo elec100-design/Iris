@@ -6,12 +6,11 @@
 
 import Foundation
 import UIKit
+import SwiftUI
+import PhotosUI
 import CoreLocation
-
 import Network
 
-// 앱이 켜지는 순간 로컬 네트워크 권한 팝업을 강제로 띄우는 완전 격리 코드
-import Network
 
 func forceTriggerLocalNetworkPopup() {
     let host = NWEndpoint.Host("255.255.255.255")
@@ -133,7 +132,7 @@ class OpenClawChatViewModel: ObservableObject {
 """
 
         do {
-            let result = try await visionService.analyzeImage(resized, customPrompt: prompt)
+            let result = sanitizeResponse(try await visionService.analyzeImage(resized, customPrompt: prompt))
             print("[VisualAI] [4/5] AI 분석 완료: \(result.prefix(80))... (\(elapsed(t0)))")
             lastAnalysisResult = result
 
@@ -201,7 +200,7 @@ class OpenClawChatViewModel: ObservableObject {
 """
 
         do {
-            let result = try await visionService.analyzeImage(resized, customPrompt: prompt)
+            let result = sanitizeResponse(try await visionService.analyzeImage(resized, customPrompt: prompt))
             lastAnalysisResult = result
             statusMessage = "음성 출력 중..."
             TTSService.shared.speak(result)
@@ -262,7 +261,7 @@ class OpenClawChatViewModel: ObservableObject {
         let visionService = QuickVisionService()
 
         do {
-            let result = try await visionService.analyzeImage(resized, customPrompt: text)
+            let result = sanitizeResponse(try await visionService.analyzeImage(resized, customPrompt: text))
             lastAnalysisResult = result
             statusMessage = "음성 출력 중..."
             TTSService.shared.speak(result)
@@ -282,11 +281,34 @@ class OpenClawChatViewModel: ObservableObject {
         await processGeminiCommand(text: text)
     }
 
-    /// 로컬 이미지 분석 요청
-    func processImageChat(image: UIImage, text: String) async -> String {
-        isAnalyzing = true
-        defer { isAnalyzing = false }
-        
+    /// 텍스트 전용 채팅 — 맥미니 오프라인 시 외부 AI fallback
+    func processTextChat(text: String, history: [OpenClawChatMessage]) async -> String {
+        let apiKey = VisionAPIConfig.apiKey
+        guard !apiKey.isEmpty else { return "❌ API 키가 설정되지 않았습니다." }
+        guard let url = URL(string: "\(VisionAPIConfig.baseURL)/chat/completions") else { return "❌ URL 오류" }
+
+        var msgs: [[String: Any]] = history.compactMap { msg in
+            guard msg.role == "user" || msg.role == "assistant" else { return nil }
+            return ["role": msg.role, "content": msg.text]
+        }
+        msgs.append(["role": "user", "content": text])
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.timeoutInterval = 60
+        for (key, value) in VisionAPIConfig.headers(with: apiKey) { request.setValue(value, forHTTPHeaderField: key) }
+        request.httpBody = try? JSONSerialization.data(withJSONObject: ["model": VisionAPIConfig.model, "messages": msgs])
+
+        guard let (data, _) = try? await URLSession.shared.data(for: request),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let choices = json["choices"] as? [[String: Any]],
+              let message = choices.first?["message"] as? [String: Any],
+              let content = message["content"] as? String
+        else { return "❌ 응답 수신 실패" }
+
+        return sanitizeResponse(content)
+    }
+
     func processImageChat(image: UIImage, text: String) async -> String {
         isAnalyzing = true
         defer { isAnalyzing = false }
@@ -323,7 +345,7 @@ class OpenClawChatViewModel: ObservableObject {
               let content = message["content"] as? String
         else { return "❌ 분석 결과 수신 실패" }
         
-        return content
+        return sanitizeResponse(content)
     }
 
 
@@ -379,6 +401,35 @@ class OpenClawChatViewModel: ObservableObject {
 
         guard let intentData = cleaned.data(using: .utf8) else { return nil }
         return try? JSONDecoder().decode(IntentResponse.self, from: intentData)
+    }
+
+    // MARK: - Response Sanitization
+
+    func sanitizeResponse(_ rawText: String) -> String {
+        var cleaned = rawText
+
+        // Remove <|channel|>thought blocks (Gemma internal reasoning tokens)
+        while let tagRange = cleaned.range(of: "<|channel|>thought") {
+            if let endRange = cleaned.range(of: "\n\n", range: tagRange.lowerBound..<cleaned.endIndex) {
+                cleaned.removeSubrange(tagRange.lowerBound..<endRange.upperBound)
+            } else {
+                cleaned.removeSubrange(tagRange.lowerBound...)
+            }
+        }
+
+        // Remove "Thinking Process:" blocks (numbered reasoning steps)
+        while let tagRange = cleaned.range(of: "Thinking Process:") {
+            let lineStart = cleaned[..<tagRange.lowerBound]
+                .lastIndex(of: "\n")
+                .map { cleaned.index(after: $0) } ?? cleaned.startIndex
+            if let endRange = cleaned.range(of: "\n\n", range: tagRange.lowerBound..<cleaned.endIndex) {
+                cleaned.removeSubrange(lineStart..<endRange.upperBound)
+            } else {
+                cleaned.removeSubrange(lineStart...)
+            }
+        }
+
+        return cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     // MARK: - Helpers
