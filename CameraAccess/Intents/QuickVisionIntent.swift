@@ -132,36 +132,6 @@ private func formatResult(_ manager: QuickVisionManager) -> some IntentResult & 
     }
 }
 
-// MARK: - 3. Siri 단축어 자동 등록
-
-@available(iOS 16.0, *)
-struct TurboMetaShortcuts: AppShortcutsProvider {
-    static var appShortcuts: [AppShortcut] {
-        AppShortcut(
-                    intent: QuickVisionCustomIntent(),
-                    phrases: [
-                        "\(.applicationName)에게 시키기",
-                        "\(.applicationName) 맞춤 지시",
-                        "\(.applicationName)에게 물어보기"
-                    ],
-                    shortTitle: "터보 맞춤 지시",
-                    systemImageName: "mic.and.signal.meter"
-                )
-        AppShortcut(
-            intent: QuickVisionIntent(),
-            phrases: ["\(.applicationName) 터보 분석", "\(.applicationName) 분석해줘"],
-            shortTitle: "터보 분석",
-            systemImageName: "eye.circle.fill"
-        )
-        AppShortcut(
-            intent: QuickVisionTranslateIntent(),
-            phrases: ["\(.applicationName) 터보 번역", "\(.applicationName) 번역해줘"],
-            shortTitle: "터보 번역",
-            systemImageName: "character.bubble.fill"
-        )
-    }
-}
-
 // MARK: - 4. 알림 이름 확장
 
 extension Notification.Name {

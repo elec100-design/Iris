@@ -70,6 +70,14 @@ class OpenClawChatViewModel: ObservableObject {
     private let service = OpenClawNodeService.shared
     private weak var streamViewModel: StreamSessionViewModel?
 
+    // MARK: - Backend Selection (persisted via UserDefaults)
+
+    @AppStorage("selected_backend") var selectedBackend: BackendProvider = .openClaw
+    @AppStorage("hermes_host") var hermesHost: String = "127.0.0.1"
+    @AppStorage("hermes_port") var hermesPort: Int = 11434
+
+    private var _hermesService: HermesNodeService?
+
     init(streamViewModel: StreamSessionViewModel) {
         self.streamViewModel = streamViewModel
         // 🌟 앱 실행 시 초기화되면서 자신을 shared에 등록
@@ -452,5 +460,36 @@ class OpenClawChatViewModel: ObservableObject {
         let newSize = CGSize(width: image.size.width * scale, height: image.size.height * scale)
         let renderer = UIGraphicsImageRenderer(size: newSize)
         return renderer.image { _ in image.draw(in: CGRect(origin: .zero, size: newSize)) }
+    }
+
+    // MARK: - Dynamic Backend Routing
+
+    /// Routes a command to the configured Hermes backend and returns a streaming response.
+    /// Image is resized to 2048px / 0.85 quality (identical to processImageChat pipeline).
+    func callHermes(_ text: String, image: UIImage? = nil) async throws -> AsyncThrowingStream<String, Error> {
+        var imageData: Data? = nil
+        if let img = image {
+            let resized = Self.resizeForAnalysis(img, maxDimension: 2048)
+            imageData = resized.jpegData(compressionQuality: 0.85)
+        }
+        let svc = resolvedHermesService()
+        if svc.agentConnectionState != .connected {
+            svc.connect()
+            try? await Task.sleep(nanoseconds: 800_000_000)
+        }
+        return try await svc.processAgentCommand(text, imageData: imageData)
+    }
+
+    private func resolvedHermesService() -> HermesNodeService {
+        if let cached = _hermesService { return cached }
+        let svc = HermesNodeService() // HermesGatewayConfig.shared 사용 (100.83.59.60:8642)
+        _hermesService = svc
+        return svc
+    }
+
+    /// LaunchHermesIntent 또는 알림 수신 시 앱 포그라운드에서 Hermes에 즉시 연결합니다.
+    func connectHermes() {
+        selectedBackend = .hermes
+        resolvedHermesService().connect()
     }
 }

@@ -711,3 +711,53 @@ private extension Int {
         return self != 0 ? self : defaultValue
     }
 }
+
+// MARK: - AgentNodeServiceProtocol Conformance
+
+extension OpenClawNodeService: AgentNodeServiceProtocol {
+
+    var agentConnectionState: AgentConnectionState {
+        switch connectionState {
+        case .disconnected:       return .disconnected
+        case .connecting:         return .connecting
+        case .waitingForPairing:  return .connecting
+        case .connected:          return .connected
+        case .error(let msg):     return .error(msg)
+        }
+    }
+
+    // Bridge onAgentChunk <-> onChatEvent so existing subscribers are unaffected.
+    var onAgentChunk: ((String) -> Void)? {
+        get { onChatEvent }
+        set { onChatEvent = newValue }
+    }
+
+    // sendAgentPayload(_:), connect(), disconnect() are already implemented on the class.
+
+    /// Wraps the callback-driven chat pipeline in an AsyncThrowingStream.
+    /// "[[FINAL]]" prefix marks the last token and closes the stream.
+    func processAgentCommand(_ command: String, imageData: Data?) async throws -> AsyncThrowingStream<String, Error> {
+        guard connectionState == .connected else {
+            throw OpenClawAgentError.localServerUnreachable
+        }
+        let image = imageData.flatMap { UIImage(data: $0) }
+        return AsyncThrowingStream { [weak self] continuation in
+            guard let self else {
+                continuation.finish(throwing: OpenClawAgentError.localServerUnreachable)
+                return
+            }
+            let savedHandler = self.onChatEvent
+            self.onChatEvent = { [weak self] chunk in
+                savedHandler?(chunk)
+                if chunk.hasPrefix("[[FINAL]]") {
+                    continuation.yield(String(chunk.dropFirst("[[FINAL]]".count)))
+                    continuation.finish()
+                    self?.onChatEvent = savedHandler
+                } else {
+                    continuation.yield(chunk)
+                }
+            }
+            self.sendChatMessage(command, image: image)
+        }
+    }
+}

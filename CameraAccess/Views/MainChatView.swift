@@ -30,7 +30,12 @@ struct MainChatView: View {
     @State private var showSettings = false
     @State private var showHistorySheet = false
     @State private var showFileImporter = false
-    
+
+    // 백엔드 선택 및 Hermes 설정
+    @AppStorage("selected_backend") private var selectedBackend: BackendProvider = .openClaw
+    @AppStorage("hermes_host") private var hermesHost: String = "127.0.0.1"
+    @AppStorage("hermes_port") private var hermesPort: Int = 11434
+
     // 듀얼 모드 관리자
     @ObservedObject private var liveAI = LiveAIManager.shared
     @State private var currentMode: AppMode = .idle
@@ -129,7 +134,13 @@ struct MainChatView: View {
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("agentRequestsListening"))) { _ in
             if currentMode != .agent { toggleAgentMode() }
         }
-        
+
+        // LaunchHermesIntent(Siri) → 앱 진입 즉시 Hermes 백엔드 연결
+        .onReceive(NotificationCenter.default.publisher(for: .hermesBackendActivated)) { _ in
+            visualAI.connectHermes()
+            messages.append(OpenClawChatMessage(role: "notice", text: "🤖 헤르메스 백엔드로 전환됩니다.", image: nil))
+        }
+
         // 아이리스 라이브 대화 로깅 동기화
         .onReceive(NotificationCenter.default.publisher(for: .voiceAgentDidUpdateMessages)) { _ in
             let liveMessages = ConversationMemory.shared.currentMessages
@@ -262,6 +273,8 @@ struct MainChatView: View {
             .cornerRadius(24)
             .padding(.horizontal, 16)
 
+            backendSelectorRow
+
             // 텍스트 입력 영역
             VStack(spacing: 8) {
                 // [기능 추가] 사진 미리보기 썸네일
@@ -385,6 +398,47 @@ struct MainChatView: View {
     private var displayASRText: String {
         if asrText.isEmpty && asrPartial.isEmpty { return isListeningAgent ? "에이전트가 듣고 있습니다..." : "" }
         return asrText + (asrPartial.isEmpty ? "" : asrPartial)
+    }
+
+    private var hermesPortBinding: Binding<String> {
+        Binding(
+            get: { hermesPort > 0 ? String(hermesPort) : "11434" },
+            set: { if let v = Int($0) { hermesPort = v } }
+        )
+    }
+
+    @ViewBuilder
+    private var backendSelectorRow: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Text("엔진").font(.caption2).foregroundColor(.secondary)
+                Picker("", selection: $selectedBackend) {
+                    ForEach(BackendProvider.allCases) { p in
+                        Text(p.rawValue).tag(p)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .frame(maxWidth: 200)
+                Spacer()
+            }
+            if selectedBackend == .hermes {
+                HStack(spacing: 8) {
+                    Image(systemName: "server.rack").font(.caption2).foregroundColor(.secondary)
+                    TextField("호스트", text: $hermesHost)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.caption)
+                    TextField("포트", text: hermesPortBinding)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.caption)
+                        .keyboardType(.numberPad)
+                        .frame(width: 72)
+                }
+                .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 4)
+        .animation(.easeInOut(duration: 0.2), value: selectedBackend)
     }
 
     // MARK: - 안경 터치패드 리모컨 제어
@@ -561,13 +615,34 @@ struct MainChatView: View {
             } else {
                 receiveAgentResponse("어디로 안내할까요? 목적지를 말씀해 주세요.")
             }
-        } else if openClawService.connectionState == .connected {
-            openClawService.sendChatMessage(command)
         } else {
-            messages.append(OpenClawChatMessage(role: "notice", text: "⚠️ 맥미니 미연결 — 외부 AI로 응답합니다", image: nil))
-            Task {
-                let response = await visualAI.processTextChat(text: command, history: historySnapshot)
-                receiveAgentResponse(response)
+            switch selectedBackend {
+            case .openClaw:
+                if openClawService.connectionState == .connected {
+                    openClawService.sendChatMessage(command)
+                } else {
+                    messages.append(OpenClawChatMessage(role: "notice", text: "⚠️ 맥미니 미연결 — 외부 AI로 응답합니다", image: nil))
+                    Task {
+                        let response = await visualAI.processTextChat(text: command, history: historySnapshot)
+                        receiveAgentResponse(response)
+                    }
+                }
+            case .hermes:
+                Task {
+                    do {
+                        var accumulated = ""
+                        let stream = try await visualAI.callHermes(command)
+                        for try await chunk in stream {
+                            accumulated += chunk
+                            pendingResponse = accumulated
+                        }
+                        pendingResponse = ""
+                        if !accumulated.isEmpty { receiveAgentResponse(accumulated) }
+                    } catch {
+                        pendingResponse = ""
+                        receiveAgentResponse("⚠️ Hermes 오류: \(error.localizedDescription)")
+                    }
+                }
             }
         }
     }
@@ -576,10 +651,29 @@ struct MainChatView: View {
     private func processAgentCommand(_ command: String, image: UIImage) {
         messages.append(OpenClawChatMessage(role: "user", text: command, image: image))
         flushPendingResponse()
-        
-        Task {
-            let response = await visualAI.processImageChat(image: image, text: command)
-            receiveAgentResponse(response)
+
+        switch selectedBackend {
+        case .openClaw:
+            Task {
+                let response = await visualAI.processImageChat(image: image, text: command)
+                receiveAgentResponse(response)
+            }
+        case .hermes:
+            Task {
+                do {
+                    var accumulated = ""
+                    let stream = try await visualAI.callHermes(command, image: image)
+                    for try await chunk in stream {
+                        accumulated += chunk
+                        pendingResponse = accumulated
+                    }
+                    pendingResponse = ""
+                    if !accumulated.isEmpty { receiveAgentResponse(accumulated) }
+                } catch {
+                    pendingResponse = ""
+                    receiveAgentResponse("⚠️ Hermes 이미지 오류: \(error.localizedDescription)")
+                }
+            }
         }
     }
 

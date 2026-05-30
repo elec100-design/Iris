@@ -74,6 +74,10 @@
 		7763D1BA2FBE601C0034018B /* AppleASRService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7763D1B92FBE601B0034018B /* AppleASRService.swift */; };
 		7763D1DB2FC0EF020034018B /* StartLiveAIIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7763D1DA2FC0EF020034018B /* StartLiveAIIntent.swift */; };
 		7763D1DD2FC102AF0034018B /* IrisAgentIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7763D1DC2FC102AF0034018B /* IrisAgentIntents.swift */; };
+		77EDFA892FC9A71C00E50D0D /* AgentNodeServiceProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77EDFA882FC9A71C00E50D0D /* AgentNodeServiceProtocol.swift */; };
+		77EDFA8B2FC9A73100E50D0D /* HermesNodeService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77EDFA8A2FC9A73100E50D0D /* HermesNodeService.swift */; };
+		77EDFA8D2FC9AC6000E50D0D /* LaunchHermesIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77EDFA8C2FC9AC6000E50D0D /* LaunchHermesIntent.swift */; };
+		77EDFA8F2FCAD13A00E50D0D /* HermesGatewayConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77EDFA8E2FCAD13A00E50D0D /* HermesGatewayConfig.swift */; };
 		77F158E22FB11A0B009AF66D /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = 77F158E12FB11A0B009AF66D /* Localizable.xcstrings */; };
 		77F158EB2FB1B449009AF66D /* UIImage+Extension.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77F158EA2FB1B437009AF66D /* UIImage+Extension.swift */; };
 		77F158ED2FB1BDEB009AF66D /* OpenClawChatViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77F158EC2FB1BDEB009AF66D /* OpenClawChatViewModel.swift */; };
@@ -201,14 +205,14 @@
 		7763D1B92FBE601B0034018B /* AppleASRService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleASRService.swift; sourceTree = "<group>"; };
 		7763D1DA2FC0EF020034018B /* StartLiveAIIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StartLiveAIIntent.swift; sourceTree = "<group>"; };
 		7763D1DC2FC102AF0034018B /* IrisAgentIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IrisAgentIntents.swift; sourceTree = "<group>"; };
+		77EDFA882FC9A71C00E50D0D /* AgentNodeServiceProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentNodeServiceProtocol.swift; sourceTree = "<group>"; };
+		77EDFA8A2FC9A73100E50D0D /* HermesNodeService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesNodeService.swift; sourceTree = "<group>"; };
+		77EDFA8C2FC9AC6000E50D0D /* LaunchHermesIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchHermesIntent.swift; sourceTree = "<group>"; };
+		77EDFA8E2FCAD13A00E50D0D /* HermesGatewayConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesGatewayConfig.swift; sourceTree = "<group>"; };
 		77F158E12FB11A0B009AF66D /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
 		77F158EA2FB1B437009AF66D /* UIImage+Extension.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "UIImage+Extension.swift"; sourceTree = "<group>"; };
 		77F158EC2FB1BDEB009AF66D /* OpenClawChatViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenClawChatViewModel.swift; sourceTree = "<group>"; };
-		77F158EF2FB1C5FF009AF66D /* TurboMetaCaptureIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TurboMetaCaptureIntent.swift; sourceTree = "<group>"; };
-		77F158F02FB1C612009AF66D /* TurboMetaShortcuts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TurboMetaShortcuts.swift; sourceTree = "<group>"; };
-		77F158F12FB22274009AF66D /* TurboMetaCustomIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TurboMetaCustomIntent.swift; sourceTree = "<group>"; };
 		77F158F22FB2257E009AF66D /* GoogleMapsNavigator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoogleMapsNavigator.swift; sourceTree = "<group>"; };
-		77F158F42FB26825009AF66D /* TurboTranslateIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TurboTranslateIntent.swift; sourceTree = "<group>"; };
 		77F158F52FB28A12009AF66D /* OpenClawSessionStorage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenClawSessionStorage.swift; sourceTree = "<group>"; };
 		77F158F72FB28A20009AF66D /* ChatHistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatHistoryView.swift; sourceTree = "<group>"; };
 		77F158F92FB481CC009AF66D /* ConnectionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionManager.swift; sourceTree = "<group>"; };
@@ -282,6 +286,7 @@
 				5C0ECA1D14EBBE33F66EEF18 /* LiveAIIntent.swift */,
 				7763D1DA2FC0EF020034018B /* StartLiveAIIntent.swift */,
 				7763D1DC2FC102AF0034018B /* IrisAgentIntents.swift */,
+				77EDFA8C2FC9AC6000E50D0D /* LaunchHermesIntent.swift */,
 			);
 			path = Intents;
 			sourceTree = "<group>";
@@ -316,6 +321,8 @@
 				LT1002000200020002 /* LiveTranslateService.swift */,
 				77F158F22FB2257E009AF66D /* GoogleMapsNavigator.swift */,
 				77F158F52FB28A12009AF66D /* OpenClawSessionStorage.swift */,
+				77EDFA862FC9A71600E50D0D /* Common */,
+				77EDFA872FC9A71600E50D0D /* Hermes */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -439,13 +446,26 @@
 			);
 			sourceTree = "<group>";
 		};
+		77EDFA862FC9A71600E50D0D /* Common */ = {
+			isa = PBXGroup;
+			children = (
+				77EDFA882FC9A71C00E50D0D /* AgentNodeServiceProtocol.swift */,
+			);
+			path = Common;
+			sourceTree = "<group>";
+		};
+		77EDFA872FC9A71600E50D0D /* Hermes */ = {
+			isa = PBXGroup;
+			children = (
+				77EDFA8A2FC9A73100E50D0D /* HermesNodeService.swift */,
+				77EDFA8E2FCAD13A00E50D0D /* HermesGatewayConfig.swift */,
+			);
+			path = Hermes;
+			sourceTree = "<group>";
+		};
 		77F158EE2FB1C5EB009AF66D /* Intents */ = {
 			isa = PBXGroup;
 			children = (
-				77F158F42FB26825009AF66D /* TurboTranslateIntent.swift */,
-				77F158F02FB1C612009AF66D /* TurboMetaShortcuts.swift */,
-				77F158EF2FB1C5FF009AF66D /* TurboMetaCaptureIntent.swift */,
-				77F158F12FB22274009AF66D /* TurboMetaCustomIntent.swift */,
 			);
 			path = Intents;
 			sourceTree = "<group>";
@@ -612,6 +632,7 @@
 				4BA57AC32EF8227E002EC214 /* ConversationDetailView.swift in Sources */,
 				4BA57AC42EF8227E002EC214 /* CircleButton.swift in Sources */,
 				77F159022FB52DDC009AF66D /* UnifiedVoiceAgent.swift in Sources */,
+				77EDFA8D2FC9AC6000E50D0D /* LaunchHermesIntent.swift in Sources */,
 				4BA57AC52EF8227E002EC214 /* CustomButton.swift in Sources */,
 				4B69CCC32F050D4300D1D025 /* RTMPStreamingView.swift in Sources */,
 				4BA57AC62EF8227E002EC214 /* StreamSessionViewModel.swift in Sources */,
@@ -619,6 +640,7 @@
 				4BA57AC72EF8227E002EC214 /* VisionAPIService.swift in Sources */,
 				4BA57AC82EF8227E002EC214 /* ConversationRecord.swift in Sources */,
 				4BA57AC92EF8227E002EC214 /* DesignSystem.swift in Sources */,
+				77EDFA892FC9A71C00E50D0D /* AgentNodeServiceProtocol.swift in Sources */,
 				4BA57ACA2EF8227E002EC214 /* StatusText.swift in Sources */,
 				4BA57ACB2EF8227E002EC214 /* MockDeviceKitButton.swift in Sources */,
 				4BA57ACC2EF8227E002EC214 /* RecordsView.swift in Sources */,
@@ -675,6 +697,7 @@
 				4B69CCC72F050D5D00D1D025 /* RTMPStreamingService.swift in Sources */,
 				217BDD58A35C2D24403F74BF /* APIProviderManager.swift in Sources */,
 				77F158ED2FB1BDEB009AF66D /* OpenClawChatViewModel.swift in Sources */,
+				77EDFA8F2FCAD13A00E50D0D /* HermesGatewayConfig.swift in Sources */,
 				2D194F19524B5A74AAA4F325 /* GeminiLiveService.swift in Sources */,
 				8AAC01AA9E2C673BDDD9C7C5 /* QuickVisionModels.swift in Sources */,
 				6FE225749B8E795D8D265971 /* QuickVisionStorage.swift in Sources */,
@@ -686,6 +709,7 @@
 				77F158F82FB28A20009AF66D /* ChatHistoryView.swift in Sources */,
 				LT0001000100010001 /* LiveTranslateModels.swift in Sources */,
 				LT0002000200020002 /* LiveTranslateService.swift in Sources */,
+				77EDFA8B2FC9A73100E50D0D /* HermesNodeService.swift in Sources */,
 				LT0003000300030003 /* LiveTranslateViewModel.swift in Sources */,
 				77F158F62FB28A12009AF66D /* OpenClawSessionStorage.swift in Sources */,
 				77F158FA2FB481CC009AF66D /* ConnectionManager.swift in Sources */,

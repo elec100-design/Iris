@@ -4,16 +4,10 @@
  *
  * This source code is licensed under the license found in the
  * LICENSE file in the root directory of this source tree.
+ *
+ * CameraAccessApp.swift
+ * Main entry point for the CameraAccess sample app demonstrating the Meta Wearables DAT SDK.
  */
-
-//
-// CameraAccessApp.swift
-//
-// Main entry point for the CameraAccess sample app demonstrating the Meta Wearables DAT SDK.
-// This app shows how to connect to wearable devices (like Ray-Ban Meta smart glasses),
-// stream live video from their cameras, and capture photos. It provides a complete example
-// of DAT SDK integration including device registration, permissions, and media streaming.
-//
 
 import AppIntents
 import Foundation
@@ -30,29 +24,32 @@ struct TurboMetaApp: App {
   // Debug menu for simulating device connections during development
   @StateObject private var debugMenuViewModel = DebugMenuViewModel(mockDeviceKit: MockDeviceKit.shared)
   #endif
+  
   #if targetEnvironment(simulator)
   @StateObject private var mockConnectionManager = MockConnectionManager()
   #endif
+  
   private let wearables: WearablesInterface
   @StateObject private var wearablesViewModel: WearablesViewModel
 
   init() {
+    // 1. Wearables SDK 환경 설정
     do {
       try Wearables.configure()
       print("✅ [TurboMeta] Wearables SDK configured successfully")
     } catch {
       print("❌ [TurboMeta] Wearables.configure() failed: \(error) | \(error.localizedDescription)")
     }
-    TurboMetaShortcuts.updateAppShortcutParameters()
-    let wearables = Wearables.shared
-    self.wearables = wearables
-    self._wearablesViewModel = StateObject(wrappedValue: WearablesViewModel(wearables: wearables))
+    
+    // 🌟 [수정 포인트] 누락되었던 씽글톤 인스턴스 및 뷰모델 강제 초기화 (2번째 에러 완벽 해결)
+    let sharedWearables = Wearables.shared
+    self.wearables = sharedWearables
+    self._wearablesViewModel = StateObject(wrappedValue: WearablesViewModel(wearables: sharedWearables))
   }
 
   var body: some Scene {
     WindowGroup {
       // Main app view with access to the shared Wearables SDK instance
-      // The Wearables.shared singleton provides the core DAT API
       MainAppView(wearables: Wearables.shared, viewModel: wearablesViewModel)
         #if targetEnvironment(simulator)
         .environment(\.connectionManager, mockConnectionManager)
@@ -65,17 +62,7 @@ struct TurboMetaApp: App {
         } message: {
           Text(wearablesViewModel.errorMessage)
         }
-        #if DEBUG
-      // Bug 图标已隐藏
-      // .sheet(isPresented: $debugMenuViewModel.showDebugMenu) {
-      //   MockDeviceKitView(viewModel: debugMenuViewModel.mockDeviceKitViewModel)
-      // }
-      // .overlay {
-      //   DebugMenuView(debugMenuViewModel: debugMenuViewModel)
-      // }
-        #endif
 
-      // Registration view handles the flow for connecting to the glasses via Meta AI
       RegistrationView(viewModel: wearablesViewModel)
     }
   }
