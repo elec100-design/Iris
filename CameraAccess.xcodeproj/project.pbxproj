@@ -78,6 +78,9 @@
 		77EDFA8B2FC9A73100E50D0D /* HermesNodeService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77EDFA8A2FC9A73100E50D0D /* HermesNodeService.swift */; };
 		77EDFA8D2FC9AC6000E50D0D /* LaunchHermesIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77EDFA8C2FC9AC6000E50D0D /* LaunchHermesIntent.swift */; };
 		77EDFA8F2FCAD13A00E50D0D /* HermesGatewayConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77EDFA8E2FCAD13A00E50D0D /* HermesGatewayConfig.swift */; };
+		77EDFA912FCAE04B00E50D0D /* GestureType.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77EDFA902FCAE04B00E50D0D /* GestureType.swift */; };
+		77EDFA932FCAE04B00E50D0D /* MetaGlassesGestureManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77EDFA922FCAE04B00E50D0D /* MetaGlassesGestureManager.swift */; };
+		77EDFA952FCAE61200E50D0D /* SpeechManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77EDFA942FCAE61200E50D0D /* SpeechManager.swift */; };
 		77F158E22FB11A0B009AF66D /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = 77F158E12FB11A0B009AF66D /* Localizable.xcstrings */; };
 		77F158EB2FB1B449009AF66D /* UIImage+Extension.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77F158EA2FB1B437009AF66D /* UIImage+Extension.swift */; };
 		77F158ED2FB1BDEB009AF66D /* OpenClawChatViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77F158EC2FB1BDEB009AF66D /* OpenClawChatViewModel.swift */; };
@@ -209,6 +212,9 @@
 		77EDFA8A2FC9A73100E50D0D /* HermesNodeService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesNodeService.swift; sourceTree = "<group>"; };
 		77EDFA8C2FC9AC6000E50D0D /* LaunchHermesIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchHermesIntent.swift; sourceTree = "<group>"; };
 		77EDFA8E2FCAD13A00E50D0D /* HermesGatewayConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesGatewayConfig.swift; sourceTree = "<group>"; };
+		77EDFA902FCAE04B00E50D0D /* GestureType.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GestureType.swift; sourceTree = "<group>"; };
+		77EDFA922FCAE04B00E50D0D /* MetaGlassesGestureManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetaGlassesGestureManager.swift; sourceTree = "<group>"; };
+		77EDFA942FCAE61200E50D0D /* SpeechManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechManager.swift; sourceTree = "<group>"; };
 		77F158E12FB11A0B009AF66D /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
 		77F158EA2FB1B437009AF66D /* UIImage+Extension.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "UIImage+Extension.swift"; sourceTree = "<group>"; };
 		77F158EC2FB1BDEB009AF66D /* OpenClawChatViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenClawChatViewModel.swift; sourceTree = "<group>"; };
@@ -300,6 +306,7 @@
 				414A2AC7E8B825BC1B4DB93F /* QuickVisionModels.swift */,
 				LT1001000100010001 /* LiveTranslateModels.swift */,
 				77F158FD2FB52DDB009AF66D /* ConversationSession.swift */,
+				77EDFA902FCAE04B00E50D0D /* GestureType.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -323,6 +330,8 @@
 				77F158F52FB28A12009AF66D /* OpenClawSessionStorage.swift */,
 				77EDFA862FC9A71600E50D0D /* Common */,
 				77EDFA872FC9A71600E50D0D /* Hermes */,
+				77EDFA922FCAE04B00E50D0D /* MetaGlassesGestureManager.swift */,
+				77EDFA942FCAE61200E50D0D /* SpeechManager.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -647,6 +656,7 @@
 				4BA57ACD2EF8227E002EC214 /* MediaPickerView.swift in Sources */,
 				4BA57ACE2EF8227E002EC214 /* NonStreamView.swift in Sources */,
 				4BA57ACF2EF8227E002EC214 /* VisionRecognitionView.swift in Sources */,
+				77EDFA912FCAE04B00E50D0D /* GestureType.swift in Sources */,
 				4BA57AD02EF8227E002EC214 /* APIKeyManager.swift in Sources */,
 				4BA57AD12EF8227E002EC214 /* RegistrationView.swift in Sources */,
 				4BA57AD22EF8227E002EC214 /* LeanEatService.swift in Sources */,
@@ -671,6 +681,7 @@
 				4BA57AE12EF8227E002EC214 /* SimpleLiveStreamView.swift in Sources */,
 				4BA57AE22EF8227E002EC214 /* DebugMenuViewModel.swift in Sources */,
 				4BA57AE32EF8227E002EC214 /* FoodNutritionModel.swift in Sources */,
+				77EDFA932FCAE04B00E50D0D /* MetaGlassesGestureManager.swift in Sources */,
 				7763D1DB2FC0EF020034018B /* StartLiveAIIntent.swift in Sources */,
 				4BA57AE42EF8227E002EC214 /* OmniRealtimeView.swift in Sources */,
 				4BA57AE52EF8227E002EC214 /* VisionAPIConfig.swift in Sources */,
@@ -687,6 +698,7 @@
 				4BA57AEE2EF8227E002EC214 /* OmniRealtimeService.swift in Sources */,
 				4BA57AEF2EF8227E002EC214 /* HomeScreenView.swift in Sources */,
 				77F158FE2FB52DDB009AF66D /* ConversationSession.swift in Sources */,
+				77EDFA952FCAE61200E50D0D /* SpeechManager.swift in Sources */,
 				4BB5DFF32F06C07A00AF7BD0 /* LiveAISettingsView.swift in Sources */,
 				05043536CDB06C0B88B3C4D9 /* TTSService.swift in Sources */,
 				26664DE8308E3F2981609421 /* QuickVisionService.swift in Sources */,

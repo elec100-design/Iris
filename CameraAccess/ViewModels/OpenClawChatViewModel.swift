@@ -78,10 +78,65 @@ class OpenClawChatViewModel: ObservableObject {
 
     private var _hermesService: HermesNodeService?
 
+    // MARK: - Touch Interrupt
+
+    @Published var isListeningReady: Bool = false
+    var currentStreamingTask: Task<Void, Never>?
+    private let speechManager = SpeechManager()
+
     init(streamViewModel: StreamSessionViewModel) {
         self.streamViewModel = streamViewModel
         // 🌟 앱 실행 시 초기화되면서 자신을 shared에 등록
         OpenClawChatViewModel.shared = self
+        setupGestureInterrupt()
+    }
+
+    private func setupGestureInterrupt() {
+        Task { [weak self] in
+            let stream = MetaGlassesGestureManager.shared.gestureStream
+            for await gesture in stream {
+                guard let self else { break }
+                if gesture == .doubleTap {
+                    self.handleGestureInterrupt()
+                }
+            }
+        }
+    }
+
+    // MainChatView 등 외부에서도 호출 가능한 진입점
+    public func handleGestureInterrupt() {
+        // .metaGlassTouchInterrupt: MainChatView 로컬 synthesizer 즉시 중단용 사이드채널
+        NotificationCenter.default.post(name: .metaGlassTouchInterrupt, object: nil)
+        Task { @MainActor [weak self] in
+            await self?.interruptCurrentSession()
+        }
+    }
+
+    func interruptCurrentSession() async {
+        // 1. 모든 TTS 즉시 중단 (TTSService + SpeechManager)
+        TTSService.shared.stop()
+        speechManager.stopSpeakingImmediately()
+
+        // 2. Hermes 스트리밍 Task 취소
+        currentStreamingTask?.cancel()
+        currentStreamingTask = nil
+
+        // 3. Haptic 피드백
+        speechManager.triggerHaptic()
+
+        // 4. Listening Ready 상태 전환
+        isListeningReady = true
+
+        // 5. 150ms 딜레이 후 준비 메시지 재생
+        await speechManager.speakReadyMessage()
+
+        // 6. 준비 메시지 시작 후 에이전트 청취 활성화
+        NotificationCenter.default.post(name: NSNotification.Name("agentRequestsListening"), object: nil)
+    }
+
+    // Hermes 응답 speakText() 직전에 MainChatView에서 호출
+    public func prepareForTTS() {
+        speechManager.prepareForSpeaking()
     }
 
     // MARK: - App-Initiated Visual AI Session

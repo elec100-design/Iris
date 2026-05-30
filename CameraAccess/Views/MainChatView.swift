@@ -141,6 +141,11 @@ struct MainChatView: View {
             messages.append(OpenClawChatMessage(role: "notice", text: "🤖 헤르메스 백엔드로 전환됩니다.", image: nil))
         }
 
+        // Meta Glasses Double Tap → 로컬 synthesizer 즉시 중단 (에이전트 활성화는 agentRequestsListening이 처리)
+        .onReceive(NotificationCenter.default.publisher(for: .metaGlassTouchInterrupt)) { _ in
+            synthesizer.stopSpeaking(at: .immediate)
+        }
+
         // 아이리스 라이브 대화 로깅 동기화
         .onReceive(NotificationCenter.default.publisher(for: .voiceAgentDidUpdateMessages)) { _ in
             let liveMessages = ConversationMemory.shared.currentMessages
@@ -628,19 +633,23 @@ struct MainChatView: View {
                     }
                 }
             case .hermes:
-                Task {
+                visualAI.currentStreamingTask?.cancel()
+                visualAI.currentStreamingTask = Task {
                     do {
                         var accumulated = ""
                         let stream = try await visualAI.callHermes(command)
                         for try await chunk in stream {
+                            if Task.isCancelled { return }
                             accumulated += chunk
                             pendingResponse = accumulated
                         }
                         pendingResponse = ""
                         if !accumulated.isEmpty { receiveAgentResponse(accumulated) }
                     } catch {
-                        pendingResponse = ""
-                        receiveAgentResponse("⚠️ Hermes 오류: \(error.localizedDescription)")
+                        if !Task.isCancelled {
+                            pendingResponse = ""
+                            receiveAgentResponse("⚠️ Hermes 오류: \(error.localizedDescription)")
+                        }
                     }
                 }
             }
@@ -659,19 +668,23 @@ struct MainChatView: View {
                 receiveAgentResponse(response)
             }
         case .hermes:
-            Task {
+            visualAI.currentStreamingTask?.cancel()
+            visualAI.currentStreamingTask = Task {
                 do {
                     var accumulated = ""
                     let stream = try await visualAI.callHermes(command, image: image)
                     for try await chunk in stream {
+                        if Task.isCancelled { return }
                         accumulated += chunk
                         pendingResponse = accumulated
                     }
                     pendingResponse = ""
                     if !accumulated.isEmpty { receiveAgentResponse(accumulated) }
                 } catch {
-                    pendingResponse = ""
-                    receiveAgentResponse("⚠️ Hermes 이미지 오류: \(error.localizedDescription)")
+                    if !Task.isCancelled {
+                        pendingResponse = ""
+                        receiveAgentResponse("⚠️ Hermes 이미지 오류: \(error.localizedDescription)")
+                    }
                 }
             }
         }
@@ -680,6 +693,7 @@ struct MainChatView: View {
     private func receiveAgentResponse(_ text: String) {
         let clean = visualAI.sanitizeResponse(text)
         messages.append(OpenClawChatMessage(role: "assistant", text: clean, image: nil))
+        visualAI.prepareForTTS() // Meta Glasses Bluetooth A2DP 라우팅 보장
         speakText(clean)
     }
 
