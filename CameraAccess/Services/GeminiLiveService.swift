@@ -640,5 +640,10 @@ extension GeminiLiveService: URLSessionWebSocketDelegate {
     func urlSession(_ session: URLSession, webSocketTask: URLSessionWebSocketTask, didCloseWith closeCode: URLSessionWebSocketTask.CloseCode, reason: Data?) {
         let reasonString = reason.flatMap { String(data: $0, encoding: .utf8) } ?? "unknown"
         print("🔌 [Gemini] WebSocket 已断开, closeCode: \(closeCode.rawValue), reason: \(reasonString)")
+        // 정상 종료(goingAway = 사용자가 disconnect() 호출)가 아닌 경우에만 에러 전파
+        guard closeCode != .normalClosure && closeCode != .goingAway else { return }
+        DispatchQueue.main.async { [weak self] in
+            self?.onError?("WebSocket 연결 끊김 (code: \(closeCode.rawValue), \(reasonString))")
+        }
     }
 }

@@ -15,7 +15,7 @@ final class SpeechManager {
     private func configureAudioSession() {
         let session = AVAudioSession.sharedInstance()
         do {
-            try session.setCategory(.playback, mode: .default, options: [.allowBluetooth, .allowBluetoothA2DP])
+            try session.setCategory(.playback, mode: .default, options: [.allowBluetoothHFP, .allowBluetoothA2DP])
             try session.setActive(true)
         } catch {
             print("[SpeechManager] AudioSession configure failed: \(error)")

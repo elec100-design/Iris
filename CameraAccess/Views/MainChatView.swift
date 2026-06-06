@@ -459,7 +459,11 @@ struct MainChatView: View {
         
         commandCenter.pauseCommand.isEnabled = true
         commandCenter.pauseCommand.addTarget { _ in
-            Task { @MainActor in if currentMode == .live { await toggleLiveMode() } }
+            // BT HFP 오디오 세션 변경 시 시스템이 자동 pause 이벤트를 발생시켜
+            // Live 세션이 즉시 종료되는 버그 방지 — pauseCommand는 TTS 정지 전용
+            Task { @MainActor in
+                if synthesizer.isSpeaking { synthesizer.stopSpeaking(at: .immediate) }
+            }
             return .success
         }
         

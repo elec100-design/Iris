@@ -313,8 +313,10 @@ class LiveAIManager: ObservableObject {
 
         geminiService.onError = { [weak self] error in
             Task { @MainActor in
-                self?.errorMessage = error
+                guard let self else { return }
+                self.errorMessage = error
                 print("❌ [LiveAIManager] Gemini error: \(error)")
+                await self.stopSession()
             }
         }
     }
