@@ -52,6 +52,8 @@ struct MainChatView: View {
     
     // 에이전트 침묵 감지 자동 전송 타이머
     @State private var silenceTimer: Timer?
+    // 더블탭 디바운스 (nextTrackCommand + metaGlassTouchInterrupt 중복 방지)
+    @State private var lastDoubleTapTime: Date = .distantPast
     
     // 에이전트 음성 출력용 TTS
     private let synthesizer = AVSpeechSynthesizer()
@@ -141,9 +143,9 @@ struct MainChatView: View {
             messages.append(OpenClawChatMessage(role: "notice", text: "🤖 헤르메스 백엔드로 전환됩니다.", image: nil))
         }
 
-        // Meta Glasses Double Tap → 로컬 synthesizer 즉시 중단 (에이전트 활성화는 agentRequestsListening이 처리)
+        // Meta Glasses Double Tap → 상태에 따라 분기: 말하는 중이면 중단+준비음, 아니면 에이전트 버튼 효과
         .onReceive(NotificationCenter.default.publisher(for: .metaGlassTouchInterrupt)) { _ in
-            synthesizer.stopSpeaking(at: .immediate)
+            Task { @MainActor in await handleDoubleTapGesture() }
         }
 
         // 아이리스 라이브 대화 로깅 동기화
@@ -467,15 +469,10 @@ struct MainChatView: View {
             return .success
         }
         
+        // 메타 선글라스 더블탭 = nextTrackCommand → 항상 에이전트 듣기모드 진입
         commandCenter.nextTrackCommand.isEnabled = true
         commandCenter.nextTrackCommand.addTarget { _ in
-            DispatchQueue.main.async {
-                if isListeningAgent {
-                    autoSendAgentCommand()
-                } else {
-                    toggleAgentMode()
-                }
-            }
+            Task { @MainActor in await handleDoubleTapGesture() }
             return .success
         }
     }
@@ -584,6 +581,43 @@ struct MainChatView: View {
         recognitionTask = nil
         isListeningAgent = false
         asrPartial = ""
+    }
+
+    // MARK: - Meta Glasses 더블탭 핸들러
+
+    @MainActor
+    private func handleDoubleTapGesture() async {
+        // 0.5초 디바운스 (nextTrackCommand + metaGlassTouchInterrupt 동시 발화 방지)
+        let now = Date()
+        guard now.timeIntervalSince(lastDoubleTapTime) > 0.5 else {
+            print("[DoubleTap] 디바운스 — 무시")
+            return
+        }
+        lastDoubleTapTime = now
+
+        let wasSpeaking = synthesizer.isSpeaking
+        print("[DoubleTap] 수신 — isSpeaking=\(wasSpeaking), mode=\(currentMode)")
+
+        // 모든 TTS·스트리밍 즉시 중단
+        synthesizer.stopSpeaking(at: .immediate)
+        visualAI.stopAllTTS()
+        visualAI.triggerHaptic()
+
+        // Live 세션 종료
+        if liveAI.isRunning { Task { await liveAI.stopSession() } }
+        // 진행 중인 ASR 정리
+        if isListeningAgent { stopAgentListening() }
+
+        withAnimation(.easeInOut(duration: 0.2)) {
+            currentMode = .agent
+        }
+
+        // 오디오 세션 전환 딜레이 (말하던 경우 조금 더 길게)
+        let delayNs: UInt64 = wasSpeaking ? 350_000_000 : 120_000_000
+        try? await Task.sleep(nanoseconds: delayNs)
+
+        print("[DoubleTap] 마이크 활성화")
+        startAgentListening()
     }
 
     private func autoSendAgentCommand() {

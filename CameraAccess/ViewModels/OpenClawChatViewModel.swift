@@ -103,35 +103,26 @@ class OpenClawChatViewModel: ObservableObject {
         }
     }
 
-    // MainChatView 등 외부에서도 호출 가능한 진입점
+    // 더블탭 신호를 MainChatView로 전달 — 실제 분기 로직은 MainChatView가 담당
     public func handleGestureInterrupt() {
-        // .metaGlassTouchInterrupt: MainChatView 로컬 synthesizer 즉시 중단용 사이드채널
         NotificationCenter.default.post(name: .metaGlassTouchInterrupt, object: nil)
-        Task { @MainActor [weak self] in
-            await self?.interruptCurrentSession()
-        }
     }
 
-    func interruptCurrentSession() async {
-        // 1. 모든 TTS 즉시 중단 (TTSService + SpeechManager)
+    // MARK: - Public TTS Helpers (MainChatView에서 사용)
+
+    func stopAllTTS() {
         TTSService.shared.stop()
         speechManager.stopSpeakingImmediately()
-
-        // 2. Hermes 스트리밍 Task 취소
         currentStreamingTask?.cancel()
         currentStreamingTask = nil
+    }
 
-        // 3. Haptic 피드백
+    func triggerHaptic() {
         speechManager.triggerHaptic()
+    }
 
-        // 4. Listening Ready 상태 전환
-        isListeningReady = true
-
-        // 5. 150ms 딜레이 후 준비 메시지 재생
+    func speakReadyMessage() async {
         await speechManager.speakReadyMessage()
-
-        // 6. 준비 메시지 시작 후 에이전트 청취 활성화
-        NotificationCenter.default.post(name: NSNotification.Name("agentRequestsListening"), object: nil)
     }
 
     // Hermes 응답 speakText() 직전에 MainChatView에서 호출
